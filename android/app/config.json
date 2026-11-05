@@ -32,6 +32,10 @@
     ],
     "final": "xray",
     "auto_detect_interface": true,
+    "find_process": true,
     "default_domain_resolver": "remote"
+  },
+  "experimental": {
+    "clash_api": { "external_controller": "127.0.0.1:9095" }
   }
 }
