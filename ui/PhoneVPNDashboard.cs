@@ -37,6 +37,14 @@ namespace PhoneVPNDashboard
         private Button btnTest;
         private Button btnSwitchIphone;
         private Button btnSwitchAndroid;
+
+        private Button navLogsBtn;
+        private Button navRoutingBtn;
+        private Button navSettingsBtn;
+        private Grid pageLogs;
+        private Grid pageRouting;
+        private Grid pageSettings;
+
         private TextBox txtLogTerminal;
         private TextBox txtSettingPorts;
         private ComboBox cmbVlessMode;
@@ -48,13 +56,17 @@ namespace PhoneVPNDashboard
         {
             repoRoot = FindRepoRoot();
 
-            Title = "Phone-Tether-Tunnel Dashboard";
-            Width = 1000;
-            Height = 720;
-            MinWidth = 850;
-            MinHeight = 600;
+            Title = "Phone-Tether-Tunnel Desktop Dashboard";
+            Width = 1080;
+            Height = 780;
+            MinWidth = 900;
+            MinHeight = 650;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
+
+            TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+            TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+            UseLayoutRounding = true;
 
             BuildUi();
 
@@ -86,38 +98,39 @@ namespace PhoneVPNDashboard
 
         private void BuildUi()
         {
-            Grid mainGrid = new Grid();
-            mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(70) });
-            mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(100) });
-            mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            Grid root = new Grid();
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(76) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(108) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
             Border headerBorder = new Border
             {
                 Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
                 BorderThickness = new Thickness(0, 0, 0, 1),
-                Padding = new Thickness(20, 12, 20, 12)
+                Padding = new Thickness(24, 12, 24, 12)
             };
 
             Grid headerGrid = new Grid();
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            StackPanel titlePanel = new StackPanel { Orientation = Orientation.Horizontal };
+            StackPanel titlePanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             Border iconBorder = new Border
             {
-                Width = 42,
-                Height = 42,
-                CornerRadius = new CornerRadius(10),
-                Background = new LinearGradientBrush(Color.FromRgb(5, 150, 105), Color.FromRgb(6, 182, 212), 45.0),
+                Width = 46,
+                Height = 46,
+                CornerRadius = new CornerRadius(12),
+                Background = new LinearGradientBrush(Color.FromRgb(16, 185, 129), Color.FromRgb(6, 182, 212), 45.0),
                 Margin = new Thickness(0, 0, 14, 0)
             };
             TextBlock iconTxt = new TextBlock
             {
                 Text = "VPN",
                 Foreground = Brushes.White,
-                FontWeight = FontWeights.Bold,
-                FontSize = 13,
+                FontWeight = FontWeights.ExtraBold,
+                FontSize = 14,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -129,14 +142,15 @@ namespace PhoneVPNDashboard
             {
                 Text = "Phone-Tether-Tunnel Desktop",
                 Foreground = Brushes.White,
-                FontSize = 17,
+                FontSize = 18,
                 FontWeight = FontWeights.Bold
             };
             TextBlock txtSubtitle = new TextBlock
             {
-                Text = "VLESS Hotspot & USB Tunnel Controller & Routing Inspector",
-                Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-                FontSize = 12
+                Text = "High-Contrast Tunnel Controller & Traffic Inspector",
+                Foreground = new SolidColorBrush(Color.FromRgb(147, 197, 253)),
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold
             };
             namePanel.Children.Add(txtTitle);
             namePanel.Children.Add(txtSubtitle);
@@ -146,16 +160,17 @@ namespace PhoneVPNDashboard
 
             StackPanel headerRight = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 
-            StackPanel modeTogglePanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 15, 0) };
+            StackPanel modeTogglePanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 18, 0) };
             btnSwitchIphone = new Button
             {
                 Content = "iPhone (Shadowrocket)",
-                Padding = new Thickness(12, 6, 12, 6),
+                Padding = new Thickness(14, 8, 14, 8),
                 FontSize = 12,
-                FontWeight = FontWeights.SemiBold,
-                Background = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                FontWeight = FontWeights.Bold,
+                Background = new SolidColorBrush(Color.FromRgb(37, 99, 235)),
                 Foreground = Brushes.White,
-                BorderThickness = new Thickness(0),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(96, 165, 250)),
+                BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             btnSwitchIphone.Click += (s, e) => SwitchPlatform("iphone");
@@ -163,12 +178,13 @@ namespace PhoneVPNDashboard
             btnSwitchAndroid = new Button
             {
                 Content = "Android (Exclave)",
-                Padding = new Thickness(12, 6, 12, 6),
+                Padding = new Thickness(14, 8, 14, 8),
                 FontSize = 12,
-                FontWeight = FontWeights.Normal,
-                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
-                Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-                BorderThickness = new Thickness(0),
+                FontWeight = FontWeights.Bold,
+                Background = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                Foreground = new SolidColorBrush(Color.FromRgb(203, 213, 225)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
+                BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             btnSwitchAndroid.Click += (s, e) => SwitchPlatform("android");
@@ -180,13 +196,14 @@ namespace PhoneVPNDashboard
             btnStart = new Button
             {
                 Content = "Start Tunnel",
-                Padding = new Thickness(16, 7, 16, 7),
+                Padding = new Thickness(18, 8, 18, 8),
                 FontSize = 12,
                 FontWeight = FontWeights.Bold,
-                Background = new SolidColorBrush(Color.FromRgb(16, 185, 129)),
+                Background = new SolidColorBrush(Color.FromRgb(22, 163, 74)),
                 Foreground = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(74, 222, 128)),
+                BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 0, 8, 0),
-                BorderThickness = new Thickness(0),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             btnStart.Click += BtnStart_Click;
@@ -195,13 +212,14 @@ namespace PhoneVPNDashboard
             btnStop = new Button
             {
                 Content = "Stop Tunnel",
-                Padding = new Thickness(16, 7, 16, 7),
+                Padding = new Thickness(18, 8, 18, 8),
                 FontSize = 12,
                 FontWeight = FontWeights.Bold,
-                Background = new SolidColorBrush(Color.FromRgb(239, 68, 68)),
+                Background = new SolidColorBrush(Color.FromRgb(220, 38, 38)),
                 Foreground = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(248, 113, 113)),
+                BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 0, 8, 0),
-                BorderThickness = new Thickness(0),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             btnStop.Click += BtnStop_Click;
@@ -210,12 +228,13 @@ namespace PhoneVPNDashboard
             btnTest = new Button
             {
                 Content = "Run Diagnostic",
-                Padding = new Thickness(14, 7, 14, 7),
+                Padding = new Thickness(16, 8, 16, 8),
                 FontSize = 12,
-                FontWeight = FontWeights.SemiBold,
+                FontWeight = FontWeights.Bold,
                 Background = new SolidColorBrush(Color.FromRgb(14, 165, 233)),
                 Foreground = Brushes.White,
-                BorderThickness = new Thickness(0),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             btnTest.Click += BtnTest_Click;
@@ -224,38 +243,132 @@ namespace PhoneVPNDashboard
             headerGrid.Children.Add(headerRight);
             Grid.SetColumn(headerRight, 1);
             headerBorder.Child = headerGrid;
-            mainGrid.Children.Add(headerBorder);
+            root.Children.Add(headerBorder);
             Grid.SetRow(headerBorder, 0);
 
-            Grid kpiGrid = new Grid { Margin = new Thickness(20, 15, 20, 10) };
+            Grid kpiGrid = new Grid { Margin = new Thickness(24, 12, 24, 8) };
             kpiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             kpiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             kpiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             kpiGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            kpiGrid.Children.Add(CreateKpiCardWithDot("System Status", out txtStatusBadge, out statusIndicatorDot, 0));
-            kpiGrid.Children.Add(CreateKpiCard("Phone Gateway", out txtGatewayVal, 1));
-            kpiGrid.Children.Add(CreateKpiCard("Active Cores", out txtProcessesVal, 2));
-            kpiGrid.Children.Add(CreateKpiCard("Discord Voice / UDP", out txtUdpVal, 3));
+            kpiGrid.Children.Add(CreateKpiCardWithDot("SYSTEM STATUS", out txtStatusBadge, out statusIndicatorDot, 0));
+            kpiGrid.Children.Add(CreateKpiCard("PHONE GATEWAY", out txtGatewayVal, 1, Color.FromRgb(56, 189, 248)));
+            kpiGrid.Children.Add(CreateKpiCard("ACTIVE CORES", out txtProcessesVal, 2, Color.FromRgb(250, 204, 21)));
+            kpiGrid.Children.Add(CreateKpiCard("DISCORD VOICE (UDP)", out txtUdpVal, 3, Color.FromRgb(192, 132, 252)));
 
-            mainGrid.Children.Add(kpiGrid);
+            root.Children.Add(kpiGrid);
             Grid.SetRow(kpiGrid, 1);
 
-            TabControl tabs = new TabControl
+            StackPanel navBar = new StackPanel
             {
-                Margin = new Thickness(20, 0, 20, 15),
-                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85))
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(24, 4, 24, 0),
+                VerticalAlignment = VerticalAlignment.Center
             };
 
-            tabs.Items.Add(CreateLogsTab());
-            tabs.Items.Add(CreateRoutingInspectorTab());
-            tabs.Items.Add(CreateSettingsTab());
+            navLogsBtn = CreateNavTabButton("Real-Time Logs (Anlik Loglar)", true);
+            navLogsBtn.Click += (s, e) => SwitchTab("logs");
+            navBar.Children.Add(navLogsBtn);
 
-            mainGrid.Children.Add(tabs);
-            Grid.SetRow(tabs, 2);
+            navRoutingBtn = CreateNavTabButton("Traffic Routing Inspector (Nelerin Nelerden Gectigi)", false);
+            navRoutingBtn.Click += (s, e) => SwitchTab("routing");
+            navBar.Children.Add(navRoutingBtn);
 
-            Content = mainGrid;
+            navSettingsBtn = CreateNavTabButton("Configuration & Settings (Ayarlar)", false);
+            navSettingsBtn.Click += (s, e) => SwitchTab("settings");
+            navBar.Children.Add(navSettingsBtn);
+
+            root.Children.Add(navBar);
+            Grid.SetRow(navBar, 2);
+
+            Grid contentArea = new Grid { Margin = new Thickness(24, 4, 24, 18) };
+
+            pageLogs = CreateLogsPage();
+            pageRouting = CreateRoutingInspectorPage();
+            pageSettings = CreateSettingsPage();
+
+            contentArea.Children.Add(pageLogs);
+            contentArea.Children.Add(pageRouting);
+            contentArea.Children.Add(pageSettings);
+
+            pageRouting.Visibility = Visibility.Collapsed;
+            pageSettings.Visibility = Visibility.Collapsed;
+
+            root.Children.Add(contentArea);
+            Grid.SetRow(contentArea, 3);
+
+            Content = root;
+        }
+
+        private Button CreateNavTabButton(string text, bool isActive)
+        {
+            Button btn = new Button
+            {
+                Content = text,
+                Padding = new Thickness(18, 9, 18, 9),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                BorderThickness = new Thickness(1, 1, 1, 0)
+            };
+
+            if (isActive)
+            {
+                btn.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
+                btn.Foreground = Brushes.White;
+                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
+            }
+            else
+            {
+                btn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
+                btn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+            }
+
+            return btn;
+        }
+
+        private void SwitchTab(string tabName)
+        {
+            navLogsBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
+            navLogsBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+            navLogsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+
+            navRoutingBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
+            navRoutingBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+            navRoutingBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+
+            navSettingsBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
+            navSettingsBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+            navSettingsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+
+            pageLogs.Visibility = Visibility.Collapsed;
+            pageRouting.Visibility = Visibility.Collapsed;
+            pageSettings.Visibility = Visibility.Collapsed;
+
+            if (tabName == "logs")
+            {
+                navLogsBtn.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
+                navLogsBtn.Foreground = Brushes.White;
+                navLogsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
+                pageLogs.Visibility = Visibility.Visible;
+            }
+            else if (tabName == "routing")
+            {
+                navRoutingBtn.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
+                navRoutingBtn.Foreground = Brushes.White;
+                navRoutingBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
+                pageRouting.Visibility = Visibility.Visible;
+            }
+            else if (tabName == "settings")
+            {
+                navSettingsBtn.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
+                navSettingsBtn.Foreground = Brushes.White;
+                navSettingsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
+                pageSettings.Visibility = Visibility.Visible;
+            }
         }
 
         private Border CreateKpiCardWithDot(string title, out TextBlock valBlock, out Border dotIndicator, int col)
@@ -263,10 +376,10 @@ namespace PhoneVPNDashboard
             Border card = new Border
             {
                 Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(15, 10, 15, 10),
+                Padding = new Thickness(16, 12, 16, 12),
                 Margin = new Thickness(col == 0 ? 0 : 6, 0, col == 3 ? 0 : 6, 0)
             };
 
@@ -274,31 +387,31 @@ namespace PhoneVPNDashboard
             TextBlock lblTitle = new TextBlock
             {
                 Text = title,
-                Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+                Foreground = new SolidColorBrush(Color.FromRgb(147, 197, 253)),
                 FontSize = 11,
-                FontWeight = FontWeights.Medium,
-                Margin = new Thickness(0, 0, 0, 4)
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 6)
             };
             sp.Children.Add(lblTitle);
 
             StackPanel valPanel = new StackPanel { Orientation = Orientation.Horizontal };
             dotIndicator = new Border
             {
-                Width = 10,
-                Height = 10,
-                CornerRadius = new CornerRadius(5),
-                Background = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-                Margin = new Thickness(0, 0, 8, 0),
+                Width = 12,
+                Height = 12,
+                CornerRadius = new CornerRadius(6),
+                Background = new SolidColorBrush(Color.FromRgb(239, 68, 68)),
+                Margin = new Thickness(0, 0, 10, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
             valPanel.Children.Add(dotIndicator);
 
             valBlock = new TextBlock
             {
-                Text = "Checking...",
+                Text = "CHECKING...",
                 Foreground = Brushes.White,
-                FontSize = 14,
-                FontWeight = FontWeights.Bold
+                FontSize = 15,
+                FontWeight = FontWeights.ExtraBold
             };
             valPanel.Children.Add(valBlock);
             sp.Children.Add(valPanel);
@@ -308,15 +421,15 @@ namespace PhoneVPNDashboard
             return card;
         }
 
-        private Border CreateKpiCard(string title, out TextBlock valBlock, int col)
+        private Border CreateKpiCard(string title, out TextBlock valBlock, int col, Color accentColor)
         {
             Border card = new Border
             {
                 Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(15, 10, 15, 10),
+                Padding = new Thickness(16, 12, 16, 12),
                 Margin = new Thickness(col == 0 ? 0 : 6, 0, col == 3 ? 0 : 6, 0)
             };
 
@@ -324,223 +437,247 @@ namespace PhoneVPNDashboard
             TextBlock lblTitle = new TextBlock
             {
                 Text = title,
-                Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+                Foreground = new SolidColorBrush(Color.FromRgb(147, 197, 253)),
                 FontSize = 11,
-                FontWeight = FontWeights.Medium,
-                Margin = new Thickness(0, 0, 0, 4)
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 6)
             };
             sp.Children.Add(lblTitle);
 
-            StackPanel valPanel = new StackPanel { Orientation = Orientation.Horizontal };
             valBlock = new TextBlock
             {
-                Text = "Checking...",
-                Foreground = Brushes.White,
-                FontSize = 14,
-                FontWeight = FontWeights.Bold
+                Text = "CHECKING...",
+                Foreground = new SolidColorBrush(accentColor),
+                FontSize = 15,
+                FontWeight = FontWeights.ExtraBold
             };
-            valPanel.Children.Add(valBlock);
-            sp.Children.Add(valPanel);
+            sp.Children.Add(valBlock);
 
             card.Child = sp;
             Grid.SetColumn(card, col);
             return card;
         }
 
-        private TabItem CreateLogsTab()
+        private Grid CreateLogsPage()
         {
-            TabItem tab = new TabItem
-            {
-                Header = "Real-Time Watcher Logs",
-                Foreground = Brushes.White,
-                FontSize = 12
-            };
-
-            Grid g = new Grid { Margin = new Thickness(10) };
+            Grid g = new Grid();
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            StackPanel toolBar = new StackPanel
+            Border controlBar = new Border
             {
-                Orientation = Orientation.Horizontal,
-                Margin = new Thickness(0, 0, 0, 8),
-                HorizontalAlignment = HorizontalAlignment.Right
+                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
+                BorderThickness = new Thickness(1, 1, 1, 0),
+                Padding = new Thickness(14, 8, 14, 8)
             };
 
+            Grid barGrid = new Grid();
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            TextBlock liveStatusHint = new TextBlock
+            {
+                Text = "LIVE LOG STREAM (Watching watcher.log every 800ms)",
+                Foreground = new SolidColorBrush(Color.FromRgb(74, 222, 128)),
+                FontWeight = FontWeights.Bold,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            barGrid.Children.Add(liveStatusHint);
+            Grid.SetColumn(liveStatusHint, 0);
+
+            StackPanel rightControls = new StackPanel { Orientation = Orientation.Horizontal };
             chkAutoScroll = new CheckBox
             {
-                Content = "Auto-scroll to bottom",
+                Content = "Auto-scroll to latest output",
                 IsChecked = true,
-                Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-                FontSize = 11,
+                Foreground = Brushes.White,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 15, 0)
+                Margin = new Thickness(0, 0, 16, 0)
             };
-            toolBar.Children.Add(chkAutoScroll);
+            rightControls.Children.Add(chkAutoScroll);
 
             Button btnClear = new Button
             {
                 Content = "Clear Console",
-                Padding = new Thickness(10, 4, 10, 4),
+                Padding = new Thickness(14, 4, 14, 4),
                 FontSize = 11,
+                FontWeight = FontWeights.Bold,
                 Background = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
                 Foreground = Brushes.White,
-                BorderThickness = new Thickness(0),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             btnClear.Click += (s, e) => { txtLogTerminal.Clear(); lastLogPosition = 0; };
-            toolBar.Children.Add(btnClear);
+            rightControls.Children.Add(btnClear);
 
-            g.Children.Add(toolBar);
-            Grid.SetRow(toolBar, 0);
+            barGrid.Children.Add(rightControls);
+            Grid.SetColumn(rightControls, 1);
+            controlBar.Child = barGrid;
+
+            g.Children.Add(controlBar);
+            Grid.SetRow(controlBar, 0);
 
             txtLogTerminal = new TextBox
             {
-                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
-                Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
+                Background = new SolidColorBrush(Color.FromRgb(5, 9, 20)),
+                Foreground = new SolidColorBrush(Color.FromRgb(241, 245, 249)),
                 FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
+                FontSize = 13,
+                FontWeight = FontWeights.Normal,
                 IsReadOnly = true,
                 TextWrapping = TextWrapping.Wrap,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Padding = new Thickness(10),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                Padding = new Thickness(14),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
                 BorderThickness = new Thickness(1)
             };
 
             g.Children.Add(txtLogTerminal);
             Grid.SetRow(txtLogTerminal, 1);
-
-            tab.Content = g;
-            return tab;
+            return g;
         }
 
-        private TabItem CreateRoutingInspectorTab()
+        private Grid CreateRoutingInspectorPage()
         {
-            TabItem tab = new TabItem
-            {
-                Header = "Traffic Routing Inspector (What Traverses Where)",
-                Foreground = Brushes.White,
-                FontSize = 12
-            };
-
+            Grid g = new Grid();
             ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            StackPanel rootPanel = new StackPanel { Margin = new Thickness(15) };
+            StackPanel rootPanel = new StackPanel { Margin = new Thickness(0, 10, 0, 10) };
 
             Border flowCard = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(15),
-                Margin = new Thickness(0, 0, 0, 15)
+                Padding = new Thickness(18),
+                Margin = new Thickness(0, 0, 0, 16)
             };
 
             StackPanel flowContent = new StackPanel();
             TextBlock flowHeader = new TextBlock
             {
-                Text = "Visual End-to-End Tunnel Pipeline",
-                Foreground = new SolidColorBrush(Color.FromRgb(6, 182, 212)),
+                Text = "Visual End-to-End Tunnel Pipeline (Hangi Paket Nereden Geciyor?)",
+                Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
                 FontWeight = FontWeights.Bold,
-                FontSize = 14,
-                Margin = new Thickness(0, 0, 0, 10)
+                FontSize = 15,
+                Margin = new Thickness(0, 0, 0, 12)
             };
             flowContent.Children.Add(flowHeader);
 
+            Border diagramBox = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(14)
+            };
+
             TextBlock flowDiagram = new TextBlock
             {
-                Text = "Windows Apps (All traffic) ──> sing-box TUN (Wintun 172.19.0.1)\n" +
-                       "                           │\n" +
-                       "                           ▼ [Local SOCKS Bridge :17890 / :17880]\n" +
-                       "                     Xray-core Relay (UDP wrapped in xudp)\n" +
-                       "                           │\n" +
-                       "                           ▼ [Hotspot / USB :1082 / :2080]\n" +
-                       "                 Phone Gateway (Shadowrocket / Exclave)\n" +
-                       "                           │\n" +
-                       "                           ▼ [Encrypted VLESS Pipeline]\n" +
-                       "                 Remote VLESS Server ──> Internet",
-                Foreground = new SolidColorBrush(Color.FromRgb(203, 213, 225)),
+                Text = "[ Windows Apps (All Traffic) ]\n" +
+                       "         |\n" +
+                       "         v  (Captured 100% by Wintun TUN Adapter)\n" +
+                       "[ sing-box TUN : 172.19.0.1 ]\n" +
+                       "         |\n" +
+                       "         v  (Local SOCKS5 Bridge: 127.0.0.1:17890 / :17880)\n" +
+                       "[ Xray-core Relay ]  --> (UDP packets converted into xudp inside TCP dialerProxy)\n" +
+                       "         |\n" +
+                       "         v  (Phone Hotspot or USB Tethering Network)\n" +
+                       "[ Phone Proxy Gateway : 172.20.10.1:1082 (iPhone) or :2080 (Android) ]\n" +
+                       "         |\n" +
+                       "         v  (Encrypted VLESS Pipeline via Cellular Data)\n" +
+                       "[ Remote VLESS Server ] ──> Global Internet Egress",
+                Foreground = new SolidColorBrush(Color.FromRgb(248, 250, 252)),
                 FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
-                LineHeight = 18
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                LineHeight = 20
             };
-            flowContent.Children.Add(flowDiagram);
+            diagramBox.Child = flowDiagram;
+            flowContent.Children.Add(diagramBox);
             flowCard.Child = flowContent;
             rootPanel.Children.Add(flowCard);
 
             TextBlock tableHeader = new TextBlock
             {
-                Text = "Protocol-by-Protocol Breakdown",
+                Text = "Protocol-by-Protocol Detailed Matrix",
                 Foreground = Brushes.White,
                 FontWeight = FontWeights.Bold,
-                FontSize = 14,
-                Margin = new Thickness(0, 5, 0, 10)
+                FontSize = 15,
+                Margin = new Thickness(0, 4, 0, 10)
             };
             rootPanel.Children.Add(tableHeader);
 
             rootPanel.Children.Add(CreateRoutingItem(
-                "Web & Browser Traffic (TCP 80/443)",
-                "sing-box TUN -> Xray-core -> Phone Proxy Share (:1082 / :2080)",
-                "Full wire-speed TCP delivery. Handled natively by the phone proxy share without overhead."
+                "Web & Browser Traffic (TCP Port 80 & 443)",
+                "sing-box TUN  -->  Xray-core (:17890)  -->  Shadowrocket Proxy Share (:1082)  -->  VLESS",
+                "Delivered at full native TCP throughput. Handled directly by phone proxy share without packet drop."
             ));
 
             rootPanel.Children.Add(CreateRoutingItem(
-                "Discord Voice & WebRTC (UDP 50000+)",
-                "sing-box TUN -> Xray (VLESS Outbound with xudp inside TCP dialerProxy) -> Phone Share",
-                "Phone proxy share drops raw UDP datagrams. Xray wraps UDP in xudp inside a TCP stream, bypassing the phone UDP block."
+                "Discord Voice & WebRTC Channels (UDP 50000+)",
+                "sing-box TUN  -->  Xray (VLESS Outbound, xudp inside TCP dialerProxy)  -->  Proxy Share (:1082)",
+                "CRITICAL: Shadowrocket drops raw UDP. Xray wraps UDP in xudp inside a TCP connection via vless.txt, guaranteeing crystal clear voice."
             ));
 
             rootPanel.Children.Add(CreateRoutingItem(
-                "DNS Resolutions (UDP 53)",
-                "sing-box Local DNS Hijack -> Remote Encrypted Proxy Resolution",
-                "Completely prevents ISP DNS poisoning, domain filters, and zero data leaks."
+                "System DNS Lookups (UDP Port 53)",
+                "sing-box Local DNS Intercept  -->  Resolved Remotely via VLESS Upstream",
+                "Completely prevents ISP DNS poisoning, blocking, and ISP query surveillance."
             ));
 
             rootPanel.Children.Add(CreateRoutingItem(
-                "Leak Killer (SetTcpEntry DELETE_TCB)",
-                "Physical Network Interface -> Force Reset by watcher.ps1",
-                "Terminates legacy TCP connections lingering on the physical Wi-Fi/USB adapter during reconnects to safeguard mobile data."
+                "Data Leak Guard (SetTcpEntry DELETE_TCB)",
+                "Physical Wi-Fi/USB Network Adapter  -->  Force Terminated by watcher.ps1 Loop",
+                "Connections created during restart gaps are terminated so apps reconnect through the encrypted TUN."
             ));
 
             scroll.Content = rootPanel;
-            tab.Content = scroll;
-            return tab;
+            g.Children.Add(scroll);
+            return g;
         }
 
         private Border CreateRoutingItem(string title, string path, string reason)
         {
             Border b = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(12, 10, 12, 10),
-                Margin = new Thickness(0, 0, 0, 8)
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16, 12, 16, 12),
+                Margin = new Thickness(0, 0, 0, 10)
             };
 
             StackPanel sp = new StackPanel();
             TextBlock t = new TextBlock
             {
                 Text = title,
-                Foreground = new SolidColorBrush(Color.FromRgb(16, 185, 129)),
+                Foreground = new SolidColorBrush(Color.FromRgb(74, 222, 128)),
                 FontWeight = FontWeights.Bold,
-                FontSize = 12
+                FontSize = 13
             };
             TextBlock p = new TextBlock
             {
                 Text = "Path: " + path,
                 Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
                 FontFamily = new FontFamily("Consolas"),
-                FontSize = 11,
-                Margin = new Thickness(0, 3, 0, 3)
+                FontWeight = FontWeights.Bold,
+                FontSize = 12,
+                Margin = new Thickness(0, 4, 0, 4)
             };
             TextBlock r = new TextBlock
             {
                 Text = reason,
-                Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-                FontSize = 11
+                Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap
             };
 
             sp.Children.Add(t);
@@ -550,113 +687,132 @@ namespace PhoneVPNDashboard
             return b;
         }
 
-        private TabItem CreateSettingsTab()
+        private Grid CreateSettingsPage()
         {
-            TabItem tab = new TabItem
+            Grid g = new Grid();
+            ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            StackPanel sp = new StackPanel { Margin = new Thickness(0, 10, 0, 10) };
+
+            Border settingsBox = new Border
             {
-                Header = "Settings & Configuration",
-                Foreground = Brushes.White,
-                FontSize = 12
+                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(20)
             };
 
-            ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            StackPanel sp = new StackPanel { Margin = new Thickness(20) };
+            StackPanel inner = new StackPanel();
 
-            sp.Children.Add(new TextBlock
+            inner.Children.Add(new TextBlock
             {
-                Text = "Probe Ports (settings.json)",
+                Text = "Target Phone Ports (settings.json)",
                 Foreground = Brushes.White,
-                FontWeight = FontWeights.SemiBold,
-                FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 5)
+                FontWeight = FontWeights.Bold,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6)
             });
             txtSettingPorts = new TextBox
             {
                 Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
                 Foreground = Brushes.White,
                 FontFamily = new FontFamily("Consolas"),
-                Padding = new Thickness(8),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
-                Margin = new Thickness(0, 0, 0, 15)
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Padding = new Thickness(10),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 16)
             };
-            sp.Children.Add(txtSettingPorts);
+            inner.Children.Add(txtSettingPorts);
 
-            sp.Children.Add(new TextBlock
+            inner.Children.Add(new TextBlock
             {
-                Text = "VLESS Mode (vlessMode: 'udp' for Discord only, 'all' for entire traffic)",
+                Text = "VLESS Mode (vlessMode: 'udp' for Discord Voice only, 'all' for entire PC traffic)",
                 Foreground = Brushes.White,
-                FontWeight = FontWeights.SemiBold,
-                FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 5)
+                FontWeight = FontWeights.Bold,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6)
             });
             cmbVlessMode = new ComboBox
             {
-                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
-                Foreground = Brushes.Black,
-                Padding = new Thickness(6),
-                Margin = new Thickness(0, 0, 0, 15)
+                Background = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+                Foreground = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Padding = new Thickness(8),
+                Margin = new Thickness(0, 0, 0, 16)
             };
             cmbVlessMode.Items.Add("udp");
             cmbVlessMode.Items.Add("all");
             cmbVlessMode.SelectedIndex = 0;
-            sp.Children.Add(cmbVlessMode);
+            inner.Children.Add(cmbVlessMode);
 
-            sp.Children.Add(new TextBlock
+            inner.Children.Add(new TextBlock
             {
-                Text = "Loop Interval Seconds (intervalSec)",
+                Text = "Loop Check Interval Seconds (intervalSec)",
                 Foreground = Brushes.White,
-                FontWeight = FontWeights.SemiBold,
-                FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 5)
+                FontWeight = FontWeights.Bold,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6)
             });
             txtSettingInterval = new TextBox
             {
                 Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
                 Foreground = Brushes.White,
                 FontFamily = new FontFamily("Consolas"),
-                Padding = new Thickness(8),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
-                Margin = new Thickness(0, 0, 0, 15)
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Padding = new Thickness(10),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 16)
             };
-            sp.Children.Add(txtSettingInterval);
+            inner.Children.Add(txtSettingInterval);
 
-            sp.Children.Add(new TextBlock
+            inner.Children.Add(new TextBlock
             {
-                Text = "VLESS Link (vless.txt)",
+                Text = "VLESS Server URI (vless.txt)",
                 Foreground = Brushes.White,
-                FontWeight = FontWeights.SemiBold,
-                FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 5)
+                FontWeight = FontWeights.Bold,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6)
             });
             txtSettingVlessLink = new TextBox
             {
                 Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
                 Foreground = Brushes.White,
                 FontFamily = new FontFamily("Consolas"),
-                Padding = new Thickness(8),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Padding = new Thickness(10),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 0, 0, 20)
             };
-            sp.Children.Add(txtSettingVlessLink);
+            inner.Children.Add(txtSettingVlessLink);
 
             Button btnSave = new Button
             {
-                Content = "Save Configuration",
-                Padding = new Thickness(16, 8, 16, 8),
-                FontSize = 12,
+                Content = "Save Settings & Apply",
+                Padding = new Thickness(22, 10, 22, 10),
+                FontSize = 13,
                 FontWeight = FontWeights.Bold,
                 Background = new SolidColorBrush(Color.FromRgb(14, 165, 233)),
                 Foreground = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Left,
-                BorderThickness = new Thickness(0),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             btnSave.Click += BtnSave_Click;
-            sp.Children.Add(btnSave);
+            inner.Children.Add(btnSave);
 
+            settingsBox.Child = inner;
+            sp.Children.Add(settingsBox);
             scroll.Content = sp;
-            tab.Content = scroll;
-            return tab;
+            g.Children.Add(scroll);
+            return g;
         }
 
         private void SwitchPlatform(string platform)
@@ -664,21 +820,27 @@ namespace PhoneVPNDashboard
             activePlatform = platform;
             if (platform == "iphone")
             {
-                btnSwitchIphone.Background = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+                btnSwitchIphone.Background = new SolidColorBrush(Color.FromRgb(37, 99, 235));
                 btnSwitchIphone.Foreground = Brushes.White;
-                btnSwitchAndroid.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
-                btnSwitchAndroid.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+                btnSwitchIphone.BorderBrush = new SolidColorBrush(Color.FromRgb(96, 165, 250));
+
+                btnSwitchAndroid.Background = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+                btnSwitchAndroid.Foreground = new SolidColorBrush(Color.FromRgb(203, 213, 225));
+                btnSwitchAndroid.BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105));
             }
             else
             {
-                btnSwitchAndroid.Background = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+                btnSwitchAndroid.Background = new SolidColorBrush(Color.FromRgb(37, 99, 235));
                 btnSwitchAndroid.Foreground = Brushes.White;
-                btnSwitchIphone.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
-                btnSwitchIphone.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+                btnSwitchAndroid.BorderBrush = new SolidColorBrush(Color.FromRgb(96, 165, 250));
+
+                btnSwitchIphone.Background = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+                btnSwitchIphone.Foreground = new SolidColorBrush(Color.FromRgb(203, 213, 225));
+                btnSwitchIphone.BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105));
             }
 
             lastLogPosition = 0;
-            txtLogTerminal.AppendText(string.Format("\n[UI] Switched active platform to {0}\n", platform.ToUpper()));
+            txtLogTerminal.AppendText(string.Format("\n[PLATFORM] Switched active platform to {0}\n", platform.ToUpper()));
             LoadInitialSettings();
             ReadWatcherLogs(true);
             UpdateProcessStatus();
@@ -753,7 +915,7 @@ namespace PhoneVPNDashboard
                     File.WriteAllText(vlessPath, txtSettingVlessLink.Text.Trim());
                 }
 
-                txtLogTerminal.AppendText("\n[SETTINGS] Configuration saved successfully.\n");
+                txtLogTerminal.AppendText("\n[SETTINGS] Configuration updated successfully.\n");
             }
             catch (Exception ex)
             {
@@ -827,25 +989,25 @@ namespace PhoneVPNDashboard
 
             if (sbRunning && xrRunning)
             {
-                txtStatusBadge.Text = "TUNNEL CONNECTED (ONLINE)";
-                statusIndicatorDot.Background = new SolidColorBrush(Color.FromRgb(16, 185, 129));
-                txtProcessesVal.Text = "sing-box & Xray (OK)";
-                txtUdpVal.Text = "Active (xudp Relay)";
-                txtGatewayVal.Text = activePlatform == "iphone" ? "Shadowrocket :1082" : "Exclave :2080";
+                txtStatusBadge.Text = "ONLINE (TUNNEL ACTIVE)";
+                statusIndicatorDot.Background = new SolidColorBrush(Color.FromRgb(34, 197, 94));
+                txtProcessesVal.Text = "sing-box & Xray RUNNING";
+                txtUdpVal.Text = "ACTIVE (xudp Relay)";
+                txtGatewayVal.Text = activePlatform == "iphone" ? "Hotspot :1082" : "Exclave :2080";
             }
             else if (sbRunning || xrRunning)
             {
-                txtStatusBadge.Text = "STARTING / PARTIAL";
+                txtStatusBadge.Text = "PARTIAL / STARTING";
                 statusIndicatorDot.Background = new SolidColorBrush(Color.FromRgb(245, 158, 11));
                 txtProcessesVal.Text = sbRunning ? "sing-box only" : "Xray only";
             }
             else
             {
-                txtStatusBadge.Text = "TUNNEL STOPPED (OFF)";
+                txtStatusBadge.Text = "STOPPED (OFF)";
                 statusIndicatorDot.Background = new SolidColorBrush(Color.FromRgb(239, 68, 68));
-                txtProcessesVal.Text = "Stopped";
-                txtUdpVal.Text = "Inactive";
-                txtGatewayVal.Text = "Not connected";
+                txtProcessesVal.Text = "STOPPED";
+                txtUdpVal.Text = "INACTIVE";
+                txtGatewayVal.Text = "DISCONNECTED";
             }
         }
 
@@ -858,7 +1020,7 @@ namespace PhoneVPNDashboard
                 return;
             }
 
-            txtLogTerminal.AppendText(string.Format("\n[EXEC] Executing {0} in background...\n", scriptName));
+            txtLogTerminal.AppendText(string.Format("\n[EXEC] Running {0}...\n", scriptName));
 
             ProcessStartInfo psi = new ProcessStartInfo
             {
@@ -903,7 +1065,7 @@ namespace PhoneVPNDashboard
             }
             catch (Exception ex)
             {
-                txtLogTerminal.AppendText(string.Format("\n[ERROR] Process launch failed: {0}\n", ex.Message));
+                txtLogTerminal.AppendText(string.Format("\n[ERROR] Launch failed: {0}\n", ex.Message));
             }
         }
 
