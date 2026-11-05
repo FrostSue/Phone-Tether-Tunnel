@@ -116,6 +116,19 @@ the PC opens its own VLESS connection to your server *through* the share and sen
 3. iPhone only: paste your `vless://` link into `vless.txt` (Notepad opens it) and save.
 4. Start with **… Baslat**, check with **… Test**, stop with **… Durdur**.
 
+## Desktop Dashboard (GUI)
+
+The project includes a native Windows desktop monitor and control panel (`Dashboard.bat` / `PhoneVPNDashboard.exe`):
+
+* **One-Click Controls:** Start Tunnel, Stop Tunnel, Run Diagnostic tests, and switch between iPhone and Android profiles.
+* **Live Socket Traffic Monitor:** Real-time inspection of active connections routing through the TUN adapter into the proxy, displaying process names, protocol, remote destination, and socket states.
+* **Data Usage Tracking:**
+  * **Session Usage & Live Speed:** Real-time session download and upload counters with dynamic bandwidth speed (MB/s / KB/s).
+  * **Total Lifetime Usage:** Cumulative download and upload statistics persisted across reboots via `stats.json`.
+  * **Per-Application Breakdown:** Proportional bandwidth distribution showing how much data each application (browsers, messaging clients, voice apps) downloaded and uploaded.
+* **Live Terminal Logs:** Streamlined log viewer for `watcher.log`, `singbox.log`, and `xray-error.log` with auto-scroll.
+* **In-App Settings:** Manage probe ports, VLESS mode, sing-box log levels, and watcher check intervals directly from the GUI.
+
 Turkish step-by-step guides: [`android/OKU-BENI.txt`](android/OKU-BENI.txt),
 [`iphone/OKU-BENI.txt`](iphone/OKU-BENI.txt).
 
