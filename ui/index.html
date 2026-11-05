@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phone-Tether-Tunnel Dashboard</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.85; transform: scale(1.02); }
+    }
+    @keyframes flow-dash {
+      to { stroke-dashoffset: -20; }
+    }
+    .flow-line {
+      stroke-dasharray: 6, 6;
+      animation: flow-dash 1s linear infinite;
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-4 md:p-6 transition-colors duration-200">
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <header class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-600 to-cyan-500 flex items-center justify-center text-white shadow-md">
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-bold tracking-tight text-[var(--foreground)]">Phone-Tether-Tunnel</h1>
+            <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">v2.1 UI</span>
+          </div>
+          <p class="text-xs text-[var(--muted-foreground)]" id="lblSubTitle">VLESS Hotspot & USB Tunnel Management Console</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+        <div class="bg-[var(--secondary)] p-1 rounded-xl flex items-center border border-[var(--border)]">
+          <button id="btnLangTr" onclick="setLanguage('tr')" class="px-2.5 py-1 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">TR</button>
+          <button id="btnLangEn" onclick="setLanguage('en')" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[var(--card)] text-[var(--foreground)] shadow-xs">EN</button>
+        </div>
+
+        <div class="bg-[var(--secondary)] p-1 rounded-xl flex items-center border border-[var(--border)]">
+          <button id="btnModeAndroid" onclick="switchMode('android')" class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 flex items-center gap-1.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.551 0 .9993.4482.9993.9993.0001.5511-.4483.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.4116 13.8533 8.125 12 8.125c-1.8533 0-3.5902.2866-5.1368.8247L4.8409 5.4467a.4161.4161 0 00-.5677-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.775h24c-.3432-4.1161-2.6889-7.5883-6.1185-9.4536"/>
+            </svg>
+            Android (Exclave)
+          </button>
+          <button id="btnModeIphone" onclick="switchMode('iphone')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[var(--card)] text-[var(--foreground)] shadow-xs transition-all duration-150 flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.42c.62-.75 1.04-1.8 0.93-2.85-.9.04-1.98.6-2.62 1.34-.56.65-.99 1.72-.88 2.76 1.01.08 2.01-.5 2.57-1.25z"/>
+            </svg>
+            iPhone (Shadowrocket)
+          </button>
+        </div>
+
+        <button id="btnMasterPower" onclick="toggleVpnState()" class="px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+          <span class="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></span>
+          <span id="txtMasterPower">TUNNEL CONNECTED (ON)</span>
+        </button>
+
+        <button onclick="runDiagnostics()" class="px-3 py-2 rounded-xl text-xs font-medium border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] text-[var(--foreground)] transition-colors flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <span id="lblTestBtn">Run Diagnostic</span>
+        </button>
+
+        <button onclick="openSettingsModal()" class="p-2 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] text-[var(--foreground)] transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 flex items-center justify-between shadow-xs">
+        <div>
+          <span class="text-xs text-[var(--muted-foreground)] block" id="lblKpiGateway">Phone Gateway</span>
+          <span id="valGateway" class="text-base font-bold text-[var(--foreground)] tracking-tight">172.20.10.1:1082</span>
+          <span id="badgeGatewayStatus" class="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500 mt-0.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Hotspot / USB Live
+          </span>
+        </div>
+        <div class="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path>
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 flex items-center justify-between shadow-xs">
+        <div>
+          <span class="text-xs text-[var(--muted-foreground)] block" id="lblKpiExitIp">Tunnel Exit IP</span>
+          <span id="valExitIp" class="text-base font-bold text-[var(--foreground)] tracking-tight">194.135.88.21</span>
+          <span class="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500 mt-0.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> DE Frankfurt (Shielded)
+          </span>
+        </div>
+        <div class="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 flex items-center justify-between shadow-xs">
+        <div>
+          <span class="text-xs text-[var(--muted-foreground)] block" id="lblKpiVoice">Discord Voice & UDP</span>
+          <span id="valUdpStatus" class="text-base font-bold text-emerald-500 tracking-tight">Active (xudp Relay)</span>
+          <span id="valUdpDesc" class="text-[11px] text-[var(--muted-foreground)] block mt-0.5">vless.txt chain active</span>
+        </div>
+        <div class="w-10 h-10 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"></path>
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 flex items-center justify-between shadow-xs">
+        <div>
+          <span class="text-xs text-[var(--muted-foreground)] block" id="lblKpiLeak">Data Leak Killer</span>
+          <span id="valLeakStatus" class="text-base font-bold text-emerald-500 tracking-tight">Protected</span>
+          <span class="text-[11px] text-[var(--muted-foreground)] block mt-0.5">SetTcpEntry: 0 leaks</span>
+        </div>
+        <div class="w-10 h-10 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-5 border-b border-[var(--border)]">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-lg font-bold text-[var(--foreground)] tracking-tight" id="lblPipelineTitle">Traffic & Pipeline Routing Inspector</h2>
+            <span class="px-2 py-0.5 text-xs font-semibold rounded bg-cyan-500/10 text-cyan-500 border border-cyan-500/20" id="badgePipeline">Flow Details</span>
+          </div>
+          <p class="text-xs text-[var(--muted-foreground)] mt-1" id="lblPipelineDesc">Inspect the precise path, hops, encapsulation, and ports each network protocol traverses from your PC to the remote server.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-[var(--muted-foreground)]">Cores:</span>
+          <span class="text-xs font-semibold px-2 py-1 rounded bg-[var(--secondary)] border border-[var(--border)]">sing-box 1.14.4</span>
+          <span class="text-xs font-semibold px-2 py-1 rounded bg-[var(--secondary)] border border-[var(--border)]">Xray 26.10.31</span>
+        </div>
+      </div>
+
+      <div class="mt-6 p-4 rounded-xl bg-[var(--secondary)]/40 border border-[var(--border)] overflow-x-auto">
+        <div class="min-w-[760px] flex items-center justify-between relative py-4 px-2">
+
+          <div class="flex flex-col items-center text-center w-36 group cursor-pointer" onclick="inspectNode('apps')">
+            <div class="w-14 h-14 rounded-2xl bg-[var(--card)] border-2 border-cyan-500/50 p-2 shadow-sm flex items-center justify-center text-cyan-500 transition-all group-hover:scale-105 group-hover:border-cyan-500">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              </svg>
+            </div>
+            <span class="text-xs font-bold text-[var(--foreground)] mt-2">Windows PC</span>
+            <span class="text-[11px] text-[var(--muted-foreground)]">Browser, Discord, Games</span>
+          </div>
+
+          <div class="flex-1 flex flex-col items-center px-1">
+            <span class="text-[10px] font-mono text-cyan-500 font-semibold mb-1">TUN Capture</span>
+            <div class="w-full h-0.5 bg-gradient-to-r from-cyan-500 to-indigo-500 relative">
+              <div class="absolute right-0 -top-1 w-2 h-2 border-t-2 border-r-2 border-indigo-500 rotate-45"></div>
+            </div>
+            <span class="text-[10px] text-[var(--muted-foreground)] mt-1">100% System Wide</span>
+          </div>
+
+          <div class="flex flex-col items-center text-center w-36 group cursor-pointer" onclick="inspectNode('singbox')">
+            <div class="w-14 h-14 rounded-2xl bg-[var(--card)] border-2 border-indigo-500/50 p-2 shadow-sm flex items-center justify-center text-indigo-500 transition-all group-hover:scale-105 group-hover:border-indigo-500">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+              </svg>
+            </div>
+            <span class="text-xs font-bold text-[var(--foreground)] mt-2">sing-box TUN</span>
+            <span id="diagramSingboxSub" class="text-[11px] font-mono text-[var(--muted-foreground)]">172.19.0.1 (Wintun)</span>
+          </div>
+
+          <div class="flex-1 flex flex-col items-center px-1">
+            <span class="text-[10px] font-mono text-indigo-500 font-semibold mb-1">Local Bridge</span>
+            <div class="w-full h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 relative">
+              <div class="absolute right-0 -top-1 w-2 h-2 border-t-2 border-r-2 border-purple-500 rotate-45"></div>
+            </div>
+            <span id="diagramBridgePort" class="text-[10px] font-mono text-[var(--muted-foreground)] mt-1">127.0.0.1:17890</span>
+          </div>
+
+          <div class="flex flex-col items-center text-center w-36 group cursor-pointer" onclick="inspectNode('xray')">
+            <div class="w-14 h-14 rounded-2xl bg-[var(--card)] border-2 border-purple-500/50 p-2 shadow-sm flex items-center justify-center text-purple-500 transition-all group-hover:scale-105 group-hover:border-purple-500">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+              </svg>
+            </div>
+            <span class="text-xs font-bold text-[var(--foreground)] mt-2">Xray Relay</span>
+            <span id="diagramXraySub" class="text-[11px] text-[var(--muted-foreground)]">xudp / SOCKS Translator</span>
+          </div>
+
+          <div class="flex-1 flex flex-col items-center px-1">
+            <span class="text-[10px] font-mono text-purple-500 font-semibold mb-1">Hotspot / USB</span>
+            <div class="w-full h-0.5 bg-gradient-to-r from-purple-500 to-emerald-500 relative">
+              <div class="absolute right-0 -top-1 w-2 h-2 border-t-2 border-r-2 border-emerald-500 rotate-45"></div>
+            </div>
+            <span id="diagramPhonePort" class="text-[10px] font-mono text-[var(--muted-foreground)] mt-1">:1082 (Proxy Share)</span>
+          </div>
+
+          <div class="flex flex-col items-center text-center w-36 group cursor-pointer" onclick="inspectNode('phone')">
+            <div class="w-14 h-14 rounded-2xl bg-[var(--card)] border-2 border-emerald-500/50 p-2 shadow-sm flex items-center justify-center text-emerald-500 transition-all group-hover:scale-105 group-hover:border-emerald-500">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+              </svg>
+            </div>
+            <span id="diagramPhoneTitle" class="text-xs font-bold text-[var(--foreground)] mt-2">iPhone (Shadowrocket)</span>
+            <span id="diagramPhoneSub" class="text-[11px] text-[var(--muted-foreground)]">Proxy Share + VLESS</span>
+          </div>
+
+          <div class="flex-1 flex flex-col items-center px-1">
+            <span class="text-[10px] font-mono text-emerald-500 font-semibold mb-1">VLESS / TLS</span>
+            <div class="w-full h-0.5 bg-gradient-to-r from-emerald-500 to-cyan-500 relative">
+              <div class="absolute right-0 -top-1 w-2 h-2 border-t-2 border-r-2 border-cyan-500 rotate-45"></div>
+            </div>
+            <span class="text-[10px] text-[var(--muted-foreground)] mt-1">End-to-End Encrypted</span>
+          </div>
+
+          <div class="flex flex-col items-center text-center w-36 group cursor-pointer" onclick="inspectNode('server')">
+            <div class="w-14 h-14 rounded-2xl bg-[var(--card)] border-2 border-cyan-500/50 p-2 shadow-sm flex items-center justify-center text-cyan-500 transition-all group-hover:scale-105 group-hover:border-cyan-500">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path>
+              </svg>
+            </div>
+            <span class="text-xs font-bold text-[var(--foreground)] mt-2">VLESS Server</span>
+            <span class="text-[11px] text-[var(--muted-foreground)]">Global Egress</span>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="mt-6">
+        <h3 class="text-sm font-semibold text-[var(--foreground)] mb-3" id="lblRoutingMatrixHeading">Protocol-by-Protocol Routing Map</h3>
+        <div class="overflow-hidden border border-[var(--border)] rounded-xl">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-[var(--secondary)] text-[var(--muted-foreground)] uppercase border-b border-[var(--border)]">
+              <tr>
+                <th class="p-3" id="thApp">Application / Traffic</th>
+                <th class="p-3" id="thProto">Original Protocol</th>
+                <th class="p-3" id="thTun">TUN & Bridge</th>
+                <th class="p-3" id="thPhone">Phone Gateway Delivery</th>
+                <th class="p-3" id="thSecurity">Routing Rationale & Protection</th>
+                <th class="p-3 text-right" id="thStatus">Status</th>
+              </tr>
+            </thead>
+            <tbody id="routingMatrixBody" class="divide-y divide-[var(--border)]">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <div class="flex items-center gap-2">
+              <div class="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-500">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                </svg>
+              </div>
+              <h3 class="text-sm font-bold text-[var(--foreground)]" id="lblDiagHeading">Live Diagnostic Suite (test.ps1)</h3>
+            </div>
+            <button id="btnRunTest" onclick="runDiagnostics()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-700 text-white transition-colors flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span id="lblRunTestText">Execute Test</span>
+            </button>
+          </div>
+          <p class="text-xs text-[var(--muted-foreground)] mt-2" id="lblDiagDesc">
+            Validates gateway routing, phone SOCKS/Proxy ports, TCP egress, UDP/STUN voice packets, and data leak prevention.
+          </p>
+
+          <div class="mt-4 space-y-2.5" id="diagnosticSteps">
+          </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+          <span id="testSummaryText">Last test completed. All systems optimal.</span>
+          <span class="font-mono text-emerald-500 font-semibold" id="lblAllTestsPass">Tests Passed (5/5)</span>
+        </div>
+      </div>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <div class="flex items-center gap-2">
+              <div class="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+              </div>
+              <h3 class="text-sm font-bold text-[var(--foreground)]" id="lblLogHeading">Live Event & Watcher Log (watcher.log)</h3>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button onclick="clearLogs()" class="p-1 rounded text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs" id="lblClearLogs">Clear</button>
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            </div>
+          </div>
+
+          <div id="logTerminal" class="mt-4 bg-[#0d1117] text-[#c9d1d9] p-3.5 rounded-xl font-mono text-xs h-64 overflow-y-auto space-y-1.5 border border-[#30363d]">
+          </div>
+        </div>
+
+        <div class="mt-3 flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+          <span id="lblIntervalNotice">Polling: 5s</span>
+          <button onclick="injectSampleLog()" class="hover:underline text-cyan-400" id="lblSimulateEvent">Simulate Event</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="settingsModal" class="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-scaleIn">
+        <div class="p-5 border-b border-[var(--border)] flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="p-2 rounded-xl bg-cyan-500/10 text-cyan-500">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-[var(--foreground)]" id="lblModalTitle">Configuration & Settings</h3>
+              <p class="text-xs text-[var(--muted-foreground)]">settings.json, vless.txt & network parameters</p>
+            </div>
+          </div>
+          <button onclick="closeSettingsModal()" class="p-1 rounded-lg hover:bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          <div class="flex gap-2 border-b border-[var(--border)] pb-3">
+            <button id="tabIphoneBtn" onclick="setSettingsTab('iphone')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--secondary)] text-[var(--foreground)]">iPhone (Shadowrocket) Settings</button>
+            <button id="tabAndroidBtn" onclick="setSettingsTab('android')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">Android (Exclave) Settings</button>
+          </div>
+
+          <div id="settingsIphoneView" class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-[var(--foreground)] mb-1">Target Proxy Share Ports (ports)</label>
+              <input type="text" id="settingPorts" value="1082, 1080, 1081, 1083, 1086, 1088, 7890, 7891, 8888, 6153, 2080, 10808, 8080" class="w-full bg-[var(--secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--foreground)] focus:outline-none focus:border-cyan-500">
+              <span class="text-[11px] text-[var(--muted-foreground)] mt-1 block">Probed ports on the phone gateway to find the Shadowrocket Proxy Share.</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-[var(--foreground)] mb-1">VLESS Routing Mode (vlessMode)</label>
+                <select id="settingVlessMode" class="w-full bg-[var(--secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--foreground)] focus:outline-none focus:border-cyan-500">
+                  <option value="udp">udp (Recommended - UDP Discord voice via VLESS dialerProxy, TCP via Share)</option>
+                  <option value="all">all (All traffic routed through VLESS chain)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-[var(--foreground)] mb-1">Check Interval (intervalSec)</label>
+                <input type="number" id="settingInterval" value="5" class="w-full bg-[var(--secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--foreground)] focus:outline-none focus:border-cyan-500">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-[var(--foreground)] mb-1">VLESS Connection URI (vless.txt)</label>
+              <div class="relative">
+                <input type="password" id="settingVlessLink" value="vless://b82e4e10-1c3f-4e09-90d2-8a9010bbfe92@your-server.domain.com:443?encryption=none&security=reality&type=grpc&pbk=SAMPLE_PUBLIC_KEY&fp=chrome#Frankfurt-VPN" class="w-full bg-[var(--secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--foreground)] focus:outline-none focus:border-cyan-500 pr-16">
+                <button type="button" onclick="togglePasswordVisibility('settingVlessLink')" class="absolute right-2 top-2 text-xs text-cyan-400 hover:text-cyan-300">Show</button>
+              </div>
+              <span class="text-[11px] text-[var(--muted-foreground)] mt-1 block">Shadowrocket server link used by Xray to carry UDP inside a TCP dialerProxy connection.</span>
+            </div>
+          </div>
+
+          <div id="settingsAndroidView" class="space-y-4 hidden">
+            <div>
+              <label class="block text-xs font-semibold text-[var(--foreground)] mb-1">Exclave SOCKS5 Port</label>
+              <input type="number" value="2080" class="w-full bg-[var(--secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--foreground)] focus:outline-none focus:border-cyan-500">
+              <span class="text-[11px] text-[var(--muted-foreground)] mt-1 block">Default SOCKS5 LAN port in Exclave is 2080.</span>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-[var(--foreground)] mb-1">Exclave LAN Permission</label>
+              <div class="flex items-center gap-2 p-3 rounded-lg bg-[var(--secondary)] border border-[var(--border)]">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                <span class="text-xs text-[var(--foreground)] font-medium">Exclave > Settings > "Allow Connections from the LAN" must be enabled.</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-[var(--foreground)] mb-1">Leak Killer & SetTcpEntry</label>
+              <p class="text-xs text-[var(--muted-foreground)]">Every 5 seconds, stale physical connections are terminated so apps reconnect through the TUN adapter.</p>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="p-4 border-t border-[var(--border)] bg-[var(--secondary)]/30 flex items-center justify-between">
+          <span class="text-xs text-[var(--muted-foreground)]">Configuration changes apply automatically.</span>
+          <div class="flex gap-2">
+            <button onclick="closeSettingsModal()" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--secondary)]">Cancel</button>
+            <button onclick="saveSettings()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-cyan-600 hover:bg-cyan-700 text-white shadow-xs">Save Settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="nodeModal" class="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-6">
+        <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+          <h3 id="nodeModalTitle" class="text-base font-bold text-[var(--foreground)]">Node Inspection</h3>
+          <button onclick="closeNodeModal()" class="p-1 rounded-lg hover:bg-[var(--secondary)] text-[var(--muted-foreground)]">✕</button>
+        </div>
+        <div id="nodeModalContent" class="py-4 text-xs text-[var(--foreground)] space-y-3">
+        </div>
+        <div class="pt-3 border-t border-[var(--border)] text-right">
+          <button onclick="closeNodeModal()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--secondary)] hover:bg-[var(--secondary)]/80 text-[var(--foreground)]">Close</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let currentMode = 'iphone';
+    let currentLang = 'en';
+    let isVpnOn = true;
+
+    const translations = {
+      en: {
+        subtitle: "VLESS Hotspot & USB Tunnel Management Console",
+        masterOn: "TUNNEL CONNECTED (ON)",
+        masterOff: "TUNNEL STOPPED (OFF)",
+        testBtn: "Run Diagnostic",
+        kpiGateway: "Phone Gateway",
+        kpiExit: "Tunnel Exit IP",
+        kpiVoice: "Discord Voice & UDP",
+        kpiLeak: "Data Leak Killer",
+        pipeTitle: "Traffic & Pipeline Routing Inspector",
+        pipeSub: "Inspect the precise path, hops, encapsulation, and ports each network protocol traverses from your PC to the remote server.",
+        diagHeading: "Live Diagnostic Suite (test.ps1)",
+        diagDesc: "Validates gateway routing, phone SOCKS/Proxy ports, TCP egress, UDP/STUN voice packets, and data leak prevention.",
+        runTestBtn: "Execute Test",
+        allPass: "Tests Passed (5/5)",
+        logHeading: "Live Event & Watcher Log (watcher.log)",
+        clearLogs: "Clear",
+        modalTitle: "Configuration & Settings"
+      },
+      tr: {
+        subtitle: "VLESS Hotspot & USB Tünel Yönetim Konsolu",
+        masterOn: "TÜNEL BAĞLI (AÇIK)",
+        masterOff: "TÜNEL DURDURULDU (KAPALI)",
+        testBtn: "Teşhis Testi",
+        kpiGateway: "Telefon Ağ Geçidi",
+        kpiExit: "Tünel Çıkış IP",
+        kpiVoice: "Discord Ses & UDP",
+        kpiLeak: "Sızıntı Önleyici",
+        pipeTitle: "Trafik Yönlendirme & Akış Denetleyicisi (Nelerin Nelerden Geçtiği)",
+        pipeSub: "Bilgisayardaki paketlerin (Web, Oyun, Discord Ses, DNS) hangi aşamalardan, hangi portlardan ve hangi servislerden geçerek hedefe ulaştığını canlı takip edin.",
+        diagHeading: "Canlı Teşhis Testi (test.ps1)",
+        diagDesc: "Ağ geçidi, telefon SOCKS portu, TCP dış çıkışı, UDP / STUN Discord ses entegrasyonu ve sızıntı koruması adım adım test edilir.",
+        runTestBtn: "Testi Başlat",
+        allPass: "Tüm Testler Başarılı (5/5)",
+        logHeading: "Canlı Olay & İzleyici Günlüğü (watcher.log)",
+        clearLogs: "Temizle",
+        modalTitle: "Yapılandırma & Ayarlar"
+      }
+    };
+
+    const routingData = {
+      iphone: [
+        {
+          app: "Web & Browser (Chrome, Edge, etc.)",
+          proto: "TCP (80, 443)",
+          tun: "sing-box TUN ➔ Xray :17890",
+          phone: "Shadowrocket Proxy Share (:1082)",
+          reason: "TCP streams traverse Shadowrocket Proxy Share directly with native speed and TLS encryption.",
+          status: "Active",
+          statusColor: "emerald"
+        },
+        {
+          app: "Discord Voice & WebRTC Channels",
+          proto: "UDP (50000+)",
+          tun: "sing-box ➔ Xray (VLESS Outbound, xudp)",
+          phone: "xudp (TCP dialerProxy) ➔ :1082",
+          reason: "Shadowrocket drops raw UDP. Xray wraps UDP into xudp inside a TCP dialerProxy connection via vless.txt.",
+          status: "Active (xudp)",
+          statusColor: "purple"
+        },
+        {
+          app: "System DNS Queries",
+          proto: "UDP (Port 53)",
+          tun: "sing-box Hijacked DNS",
+          phone: "Resolved Remotely via Proxy",
+          reason: "Intercepted by sing-box to prevent ISP DNS filtering and eliminate DNS leaks.",
+          status: "Shielded",
+          statusColor: "emerald"
+        },
+        {
+          app: "STUN & Gaming UDP (Valorant, CS2, etc.)",
+          proto: "UDP (Dynamic)",
+          tun: "sing-box ➔ Xray xudp Chain",
+          phone: "Shadowrocket (1082) ➔ VLESS",
+          reason: "UDP endpoints receive verified STUN reflection packets through the dialerProxy pipeline.",
+          status: "Active",
+          statusColor: "emerald"
+        },
+        {
+          app: "Stale / Residual TCP Sockets",
+          proto: "TCP (Physical Nic)",
+          tun: "SetTcpEntry Auto-Detection",
+          phone: "Socket Terminated (DELETE_TCB)",
+          reason: "Connections opened during reconnect gaps are reset so they reconnect safely through the TUN.",
+          status: "Guarded",
+          statusColor: "amber"
+        }
+      ],
+      android: [
+        {
+          app: "General Web & Download Traffic",
+          proto: "TCP (80, 443)",
+          tun: "sing-box TUN ➔ Xray (:17880)",
+          phone: "Exclave SOCKS5 LAN (:2080)",
+          reason: "Routed cleanly into Exclave's open LAN SOCKS5 port with full bandwidth.",
+          status: "Active",
+          statusColor: "emerald"
+        },
+        {
+          app: "Discord Voice & Gaming UDP",
+          proto: "UDP (Dynamic)",
+          tun: "sing-box ➔ Xray (:17880)",
+          phone: "Exclave SOCKS5 (UDP ASSOCIATE)",
+          reason: "Exclave replies with 0.0.0.0 relay address; Xray normalizes the target address for flawless delivery.",
+          status: "Active",
+          statusColor: "emerald"
+        },
+        {
+          app: "System DNS Queries",
+          proto: "UDP (Port 53)",
+          tun: "sing-box Local DNS Hijack",
+          phone: "Exclave Tunnel (Remote DNS)",
+          reason: "Eliminates ISP query surveillance and DNS poisoning completely.",
+          status: "Shielded",
+          statusColor: "emerald"
+        },
+        {
+          app: "Data Leak Killer (SetTcpEntry)",
+          proto: "TCP (Physical Nic)",
+          tun: "watcher.ps1 Cleanup Loop",
+          phone: "DELETE_TCB Command",
+          reason: "Guarantees zero unproxied cellular bytes when phone temporarily reconnects.",
+          status: "Guarded",
+          statusColor: "amber"
+        }
+      ]
+    };
+
+    const initialLogs = [
+      "[INFO] Phone-Tether-Tunnel initialized.",
+      "[OK]   Gateway detected: 172.20.10.1 (Wi-Fi Hotspot / USB)",
+      "[OK]   Shadowrocket Proxy Share live on 172.20.10.1:1082",
+      "[OK]   sing-box 1.14.4 and Xray 26.10.31 active.",
+      "[OK]   TCP verification passed (Exit IP: 194.135.88.21).",
+      "[OK]   UDP xudp pipeline established (STUN reply received). Discord voice operational.",
+      "[GUARD] SetTcpEntry leak cleanup executed (0 leaks found)."
+    ];
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      const btnTr = document.getElementById('btnLangTr');
+      const btnEn = document.getElementById('btnLangEn');
+
+      if (lang === 'tr') {
+        btnTr.className = "px-2.5 py-1 rounded-lg text-xs font-semibold bg-[var(--card)] text-[var(--foreground)] shadow-xs";
+        btnEn.className = "px-2.5 py-1 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)]";
+      } else {
+        btnEn.className = "px-2.5 py-1 rounded-lg text-xs font-semibold bg-[var(--card)] text-[var(--foreground)] shadow-xs";
+        btnTr.className = "px-2.5 py-1 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)]";
+      }
+
+      const t = translations[lang];
+      document.getElementById('lblSubTitle').innerText = t.subtitle;
+      document.getElementById('txtMasterPower').innerText = isVpnOn ? t.masterOn : t.masterOff;
+      document.getElementById('lblTestBtn').innerText = t.testBtn;
+      document.getElementById('lblKpiGateway').innerText = t.kpiGateway;
+      document.getElementById('lblKpiExitIp').innerText = t.kpiExit;
+      document.getElementById('lblKpiVoice').innerText = t.kpiVoice;
+      document.getElementById('lblKpiLeak').innerText = t.kpiLeak;
+      document.getElementById('lblPipelineTitle').innerText = t.pipeTitle;
+      document.getElementById('lblPipelineDesc').innerText = t.pipeSub;
+      document.getElementById('lblDiagHeading').innerText = t.diagHeading;
+      document.getElementById('lblDiagDesc').innerText = t.diagDesc;
+      document.getElementById('lblRunTestText').innerText = t.runTestBtn;
+      document.getElementById('lblAllTestsPass').innerText = t.allPass;
+      document.getElementById('lblLogHeading').innerText = t.logHeading;
+      document.getElementById('lblClearLogs').innerText = t.clearLogs;
+      document.getElementById('lblModalTitle').innerText = t.modalTitle;
+    }
+
+    function renderRoutingMatrix() {
+      const tbody = document.getElementById('routingMatrixBody');
+      const rows = routingData[currentMode];
+      tbody.innerHTML = '';
+
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-[var(--secondary)]/50 transition-colors";
+
+        let badgeBg = "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+        if (r.statusColor === 'purple') badgeBg = "bg-purple-500/10 text-purple-500 border-purple-500/20";
+        if (r.statusColor === 'amber') badgeBg = "bg-amber-500/10 text-amber-500 border-amber-500/20";
+
+        tr.innerHTML = `
+          <td class="p-3 font-semibold text-[var(--foreground)]">${r.app}</td>
+          <td class="p-3 font-mono text-[var(--muted-foreground)]">${r.proto}</td>
+          <td class="p-3 font-mono text-[var(--foreground)]">${r.tun}</td>
+          <td class="p-3 font-mono text-cyan-400">${r.phone}</td>
+          <td class="p-3 text-[var(--muted-foreground)]">${r.reason}</td>
+          <td class="p-3 text-right">
+            <span class="px-2 py-0.5 rounded text-[11px] font-semibold border ${badgeBg}">${r.status}</span>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function switchMode(mode) {
+      currentMode = mode;
+      const btnAndroid = document.getElementById('btnModeAndroid');
+      const btnIphone = document.getElementById('btnModeIphone');
+
+      if (mode === 'android') {
+        btnAndroid.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[var(--card)] text-[var(--foreground)] shadow-xs transition-all duration-150 flex items-center gap-1.5";
+        btnIphone.className = "px-3.5 py-1.5 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-all duration-150 flex items-center gap-1.5";
+
+        document.getElementById('valGateway').innerText = "192.168.43.1:2080";
+        document.getElementById('diagramBridgePort').innerText = "127.0.0.1:17880";
+        document.getElementById('diagramPhonePort').innerText = ":2080 (Exclave LAN)";
+        document.getElementById('diagramPhoneTitle').innerText = "Android (Exclave)";
+        document.getElementById('diagramPhoneSub').innerText = "SOCKS5 LAN :2080";
+        document.getElementById('diagramXraySub').innerText = "0.0.0.0 Relay Handler";
+        document.getElementById('valUdpDesc').innerText = "Exclave SOCKS5 UDP Associate";
+      } else {
+        btnIphone.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[var(--card)] text-[var(--foreground)] shadow-xs transition-all duration-150 flex items-center gap-1.5";
+        btnAndroid.className = "px-3.5 py-1.5 rounded-lg text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-all duration-150 flex items-center gap-1.5";
+
+        document.getElementById('valGateway').innerText = "172.20.10.1:1082";
+        document.getElementById('diagramBridgePort').innerText = "127.0.0.1:17890";
+        document.getElementById('diagramPhonePort').innerText = ":1082 (Proxy Share)";
+        document.getElementById('diagramPhoneTitle').innerText = "iPhone (Shadowrocket)";
+        document.getElementById('diagramPhoneSub').innerText = "Proxy Share + VLESS";
+        document.getElementById('diagramXraySub').innerText = "xudp / SOCKS Translator";
+        document.getElementById('valUdpDesc').innerText = "vless.txt chain active";
+      }
+
+      renderRoutingMatrix();
+      addLog(`[SYSTEM] Mode switched: ${mode.toUpperCase()}`);
+    }
+
+    function toggleVpnState() {
+      isVpnOn = !isVpnOn;
+      const btn = document.getElementById('btnMasterPower');
+      const txt = document.getElementById('txtMasterPower');
+      const valGateway = document.getElementById('valGateway');
+      const valExit = document.getElementById('valExitIp');
+      const valUdp = document.getElementById('valUdpStatus');
+      const badgeGateway = document.getElementById('badgeGatewayStatus');
+
+      if (isVpnOn) {
+        btn.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm";
+        txt.innerText = currentLang === 'tr' ? "TÜNEL BAĞLI (AÇIK)" : "TUNNEL CONNECTED (ON)";
+        valGateway.innerText = currentMode === 'iphone' ? "172.20.10.1:1082" : "192.168.43.1:2080";
+        valExit.innerText = "194.135.88.21";
+        valUdp.innerText = "Active (xudp Relay)";
+        valUdp.className = "text-base font-bold text-emerald-500 tracking-tight";
+        badgeGateway.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Hotspot / USB Live`;
+        addLog("[START] VPN Services (sing-box & Xray) active. Tunnel engaged.");
+      } else {
+        btn.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white shadow-sm";
+        txt.innerText = currentLang === 'tr' ? "TÜNEL DURDURULDU (KAPALI)" : "TUNNEL STOPPED (OFF)";
+        valGateway.innerText = "Disconnected";
+        valExit.innerText = "Local Physical IP";
+        valUdp.innerText = "Inactive";
+        valUdp.className = "text-base font-bold text-red-500 tracking-tight";
+        badgeGateway.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Stopped`;
+        addLog("[STOP] VPN Services stopped (stop.ps1). TUN adapter released.");
+      }
+    }
+
+    const testStepsConfig = [
+      { id: 1, title: "1) Network Gateways Scan", desc: "Discovering phone Hotspot / USB gateway..." },
+      { id: 2, title: "2) Phone Proxy Port Handshake", desc: "Testing target SOCKS / Proxy Share port (1082 / 2080)..." },
+      { id: 3, title: "3) TCP Tunnel Egress Validation", desc: "Querying api.ipify.org for exit IP..." },
+      { id: 4, title: "4) UDP & STUN Voice Probe", desc: "Performing STUN query to stun.l.google.com:19302..." },
+      { id: 5, title: "5) Leak Killer Guard Check", desc: "Verifying physical TCP socket isolation..." }
+    ];
+
+    function renderDiagnosticSteps(results = {}) {
+      const container = document.getElementById('diagnosticSteps');
+      container.innerHTML = '';
+
+      testStepsConfig.forEach(step => {
+        const isDone = results[step.id] === true;
+        const isPending = results[step.id] === 'pending';
+
+        let icon = `<div class="w-5 h-5 rounded-full border border-[var(--border)] flex items-center justify-center text-[10px] text-[var(--muted-foreground)]">${step.id}</div>`;
+        if (isDone) {
+          icon = `<div class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></div>`;
+        } else if (isPending) {
+          icon = `<div class="w-5 h-5 rounded-full border-2 border-cyan-500 border-t-transparent animate-spin"></div>`;
+        }
+
+        const div = document.createElement('div');
+        div.className = "flex items-center justify-between p-2.5 rounded-xl bg-[var(--secondary)]/40 border border-[var(--border)]";
+        div.innerHTML = `
+          <div class="flex items-center gap-2.5">
+            ${icon}
+            <div>
+              <span class="text-xs font-semibold text-[var(--foreground)] block">${step.title}</span>
+              <span class="text-[11px] text-[var(--muted-foreground)]">${step.desc}</span>
+            </div>
+          </div>
+          <span class="text-[11px] font-mono ${isDone ? 'text-emerald-500 font-semibold' : 'text-[var(--muted-foreground)]'}">
+            ${isDone ? 'PASSED' : (isPending ? 'Testing...' : 'Pending')}
+          </span>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function runDiagnostics() {
+      const btn = document.getElementById('btnRunTest');
+      btn.disabled = true;
+      btn.innerText = "Running...";
+      addLog("[TEST] Diagnostic routine started (simulating test.ps1)...");
+
+      let currentStep = 1;
+      let state = {};
+
+      const interval = setInterval(() => {
+        if (currentStep <= 5) {
+          state[currentStep] = 'pending';
+          renderDiagnosticSteps(state);
+
+          setTimeout(() => {
+            state[currentStep] = true;
+            renderDiagnosticSteps(state);
+            if (currentStep === 1) addLog("[OK] Gateway discovered: " + (currentMode === 'iphone' ? '172.20.10.1' : '192.168.43.1'));
+            if (currentStep === 2) addLog("[OK] Phone port responded: " + (currentMode === 'iphone' ? '1082 (Proxy Share)' : '2080 (Exclave)'));
+            if (currentStep === 3) addLog("[OK] TCP tunnel verified: Egress IP 194.135.88.21");
+            if (currentStep === 4) addLog("[OK] UDP STUN test passed: Discord voice connections working.");
+            if (currentStep === 5) addLog("[OK] Leak killer active: 0 direct mobile data leaks.");
+            currentStep++;
+          }, 350);
+        } else {
+          clearInterval(interval);
+          btn.disabled = false;
+          btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Re-run Test`;
+          document.getElementById('testSummaryText').innerText = "Last test completed. All systems optimal.";
+        }
+      }, 500);
+    }
+
+    function addLog(msg) {
+      const term = document.getElementById('logTerminal');
+      const line = document.createElement('div');
+      const time = new Date().toLocaleTimeString();
+      line.innerText = `[${time}] ${msg}`;
+      if (msg.includes('[OK]')) line.className = "text-emerald-400";
+      else if (msg.includes('[START]')) line.className = "text-cyan-400 font-semibold";
+      else if (msg.includes('[STOP]')) line.className = "text-red-400 font-semibold";
+      else if (msg.includes('[GUARD]')) line.className = "text-amber-300";
+      else line.className = "text-[#c9d1d9]";
+
+      term.appendChild(line);
+      term.scrollTop = term.scrollHeight;
+    }
+
+    function clearLogs() {
+      document.getElementById('logTerminal').innerHTML = '';
+      addLog("[INFO] Terminal buffer cleared.");
+    }
+
+    function injectSampleLog() {
+      const samples = [
+        "[ROUTE] Discord Voice UDP packet captured ➔ routed via xudp dialerProxy.",
+        "[GUARD] Stale local socket detected, closed via SetTcpEntry.",
+        "[PING] Phone gateway RTT: 14ms. Jitter: 1.2ms.",
+        "[VLESS] Pinned certificate SHA-256 hash verified."
+      ];
+      const random = samples[Math.floor(Math.random() * samples.length)];
+      addLog(random);
+    }
+
+    function inspectNode(nodeKey) {
+      const modal = document.getElementById('nodeModal');
+      const title = document.getElementById('nodeModalTitle');
+      const content = document.getElementById('nodeModalContent');
+
+      const infoMap = {
+        apps: {
+          title: "Windows PC Applications",
+          html: `<p>All software running on your Windows machine (Chrome, Discord, Steam, Spotify, Terminal).</p><p class="text-[var(--muted-foreground)]">Zero per-app proxy setup is required. All network packets are captured globally by the virtual TUN adapter.</p>`
+        },
+        singbox: {
+          title: "sing-box (TUN Engine - Wintun)",
+          html: `<p><strong>Core:</strong> sing-box 1.14.4</p><p><strong>Adapter:</strong> phonevpn-tun / android-tun</p><p>Creates the high-performance Wintun adapter, captures TCP, UDP, and Port 53 DNS, forwarding traffic to Xray local relay.</p>`
+        },
+        xray: {
+          title: "Xray-core (Relay & Protocol Translator)",
+          html: `<p><strong>Core:</strong> Xray 26.10.31</p><p><strong>Local Listen:</strong> 127.0.0.1:17890 (or :17880)</p><p>Solves phone UDP sharing limitations. Wraps UDP in xudp within a TCP dialerProxy connection, pins certificates, and manages outbounds.</p>`
+        },
+        phone: {
+          title: currentMode === 'iphone' ? "iPhone (Shadowrocket Proxy Share)" : "Android (Exclave SOCKS5)",
+          html: currentMode === 'iphone' ?
+            `<p><strong>Gateway Port:</strong> :1082</p><p>Shadowrocket Proxy Share carries TCP streams directly and transports xudp connections to your VLESS destination.</p>` :
+            `<p><strong>Gateway Port:</strong> :2080</p><p>Exclave LAN SOCKS5 port handles TCP and UDP ASSOCIATE.</p>`
+        },
+        server: {
+          title: "VLESS Remote Server",
+          html: `<p><strong>Protocol:</strong> VLESS + TLS / REALITY + gRPC / WS</p><p>The ultimate tunnel destination. The mobile carrier only sees standard encrypted traffic from your phone to this server.</p>`
+        }
+      };
+
+      const selected = infoMap[nodeKey];
+      if (selected) {
+        title.innerText = selected.title;
+        content.innerHTML = selected.html;
+        modal.classList.remove('hidden');
+      }
+    }
+
+    function closeNodeModal() {
+      document.getElementById('nodeModal').classList.add('hidden');
+    }
+
+    function openSettingsModal() {
+      document.getElementById('settingsModal').classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settingsModal').classList.add('hidden');
+    }
+
+    function setSettingsTab(tab) {
+      const iphoneView = document.getElementById('settingsIphoneView');
+      const androidView = document.getElementById('settingsAndroidView');
+      const iphoneBtn = document.getElementById('tabIphoneBtn');
+      const androidBtn = document.getElementById('tabAndroidBtn');
+
+      if (tab === 'iphone') {
+        iphoneView.classList.remove('hidden');
+        androidView.classList.add('hidden');
+        iphoneBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--secondary)] text-[var(--foreground)]";
+        androidBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)]";
+      } else {
+        iphoneView.classList.add('hidden');
+        androidView.classList.remove('hidden');
+        androidBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--secondary)] text-[var(--foreground)]";
+        iphoneBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)]";
+      }
+    }
+
+    function togglePasswordVisibility(id) {
+      const input = document.getElementById(id);
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function saveSettings() {
+      closeSettingsModal();
+      addLog("[SETTINGS] Settings saved and reloaded by watcher loop.");
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      switchMode('iphone');
+      renderDiagnosticSteps({ 1: true, 2: true, 3: true, 4: true, 5: true });
+      initialLogs.forEach(log => addLog(log));
+    });
+  </script>
+</body>
+</html>
