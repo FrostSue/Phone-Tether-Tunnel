@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -20,47 +21,68 @@ namespace PhoneVPNDashboard
         }
     }
 
+    public class AppConnectionItem
+    {
+        public string ProcessName { get; set; }
+        public string Protocol { get; set; }
+        public string LocalEndpoint { get; set; }
+        public string RemoteEndpoint { get; set; }
+        public string RouteType { get; set; }
+        public string Status { get; set; }
+    }
+
     public class DashboardWindow : Window
     {
         private string activePlatform = "iphone";
-        private long lastLogPosition = 0;
-        private string repoRoot;
+        private string activeFolder = "";
+        private long lastWatcherLogPos = 0;
+        private long lastSingboxLogPos = 0;
         private DispatcherTimer refreshTimer;
+        private DispatcherTimer connectionsTimer;
 
         private Border statusIndicatorDot;
         private TextBlock txtStatusBadge;
         private TextBlock txtGatewayVal;
         private TextBlock txtProcessesVal;
-        private TextBlock txtUdpVal;
+        private TextBlock txtActiveFolderVal;
+        private TextBox txtCustomFolderPath;
+
         private Button btnStart;
         private Button btnStop;
         private Button btnTest;
         private Button btnSwitchIphone;
         private Button btnSwitchAndroid;
 
+        private Button navLiveFeedBtn;
         private Button navLogsBtn;
         private Button navRoutingBtn;
         private Button navSettingsBtn;
+
+        private Grid pageLiveFeed;
         private Grid pageLogs;
         private Grid pageRouting;
         private Grid pageSettings;
 
+        private ListView listConnections;
         private TextBox txtLogTerminal;
+        private ComboBox cmbLogSource;
+        private CheckBox chkAutoScroll;
+
         private TextBox txtSettingPorts;
         private ComboBox cmbVlessMode;
+        private ComboBox cmbSingboxLogLevel;
         private TextBox txtSettingInterval;
         private TextBox txtSettingVlessLink;
-        private CheckBox chkAutoScroll;
 
         public DashboardWindow()
         {
-            repoRoot = FindRepoRoot();
+            activeFolder = AutoDetectActiveFolder();
 
-            Title = "Phone-Tether-Tunnel Desktop Dashboard";
-            Width = 1080;
-            Height = 780;
-            MinWidth = 900;
-            MinHeight = 650;
+            Title = "Phone-Tether-Tunnel Live Monitor & Dashboard";
+            Width = 1150;
+            Height = 820;
+            MinWidth = 950;
+            MinHeight = 680;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
 
@@ -75,31 +97,55 @@ namespace PhoneVPNDashboard
             refreshTimer.Tick += RefreshTimer_Tick;
             refreshTimer.Start();
 
+            connectionsTimer = new DispatcherTimer();
+            connectionsTimer.Interval = TimeSpan.FromSeconds(2);
+            connectionsTimer.Tick += ConnectionsTimer_Tick;
+            connectionsTimer.Start();
+
             LoadInitialSettings();
-            ReadWatcherLogs(true);
+            ReadLogs(true);
             UpdateProcessStatus();
+            UpdateLiveConnections();
         }
 
-        private string FindRepoRoot()
+        private string AutoDetectActiveFolder()
         {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string appDataPhoneVpn = Path.Combine(localAppData, "PhoneVPN");
+            if (Directory.Exists(appDataPhoneVpn) && File.Exists(Path.Combine(appDataPhoneVpn, "settings.json")))
+            {
+                return appDataPhoneVpn;
+            }
+
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string iphoneApp = Path.Combine(userProfile, "PhoneVPN-iPhone", "app");
+            if (Directory.Exists(iphoneApp)) return iphoneApp;
+
+            string androidApp = Path.Combine(userProfile, "PhoneVPN-Android", "app");
+            if (Directory.Exists(androidApp)) return androidApp;
+
+            string downloadsIphone = Path.Combine(userProfile, "Downloads", "AyuGram Desktop", "PhoneVPN-iPhone", "app");
+            if (Directory.Exists(downloadsIphone)) return downloadsIphone;
+
             string current = AppDomain.CurrentDomain.BaseDirectory;
             while (!string.IsNullOrEmpty(current))
             {
-                if (Directory.Exists(Path.Combine(current, "iphone")) && Directory.Exists(Path.Combine(current, "android")))
+                if (Directory.Exists(Path.Combine(current, "iphone", "app")))
                 {
-                    return current;
+                    return Path.Combine(current, "iphone", "app");
                 }
                 DirectoryInfo parent = Directory.GetParent(current);
                 if (parent == null) break;
                 current = parent.FullName;
             }
+
             return AppDomain.CurrentDomain.BaseDirectory;
         }
 
         private void BuildUi()
         {
             Grid root = new Grid();
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(76) });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(82) });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(108) });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -109,7 +155,7 @@ namespace PhoneVPNDashboard
                 Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
                 BorderThickness = new Thickness(0, 0, 0, 1),
-                Padding = new Thickness(24, 12, 24, 12)
+                Padding = new Thickness(24, 10, 24, 10)
             };
 
             Grid headerGrid = new Grid();
@@ -119,8 +165,8 @@ namespace PhoneVPNDashboard
             StackPanel titlePanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             Border iconBorder = new Border
             {
-                Width = 46,
-                Height = 46,
+                Width = 48,
+                Height = 48,
                 CornerRadius = new CornerRadius(12),
                 Background = new LinearGradientBrush(Color.FromRgb(16, 185, 129), Color.FromRgb(6, 182, 212), 45.0),
                 Margin = new Thickness(0, 0, 14, 0)
@@ -140,20 +186,33 @@ namespace PhoneVPNDashboard
             StackPanel namePanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             TextBlock txtTitle = new TextBlock
             {
-                Text = "Phone-Tether-Tunnel Desktop",
+                Text = "Phone-Tether-Tunnel Live Monitor",
                 Foreground = Brushes.White,
                 FontSize = 18,
                 FontWeight = FontWeights.Bold
             };
-            TextBlock txtSubtitle = new TextBlock
+
+            StackPanel folderPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+            TextBlock lblFolder = new TextBlock
             {
-                Text = "High-Contrast Tunnel Controller & Traffic Inspector",
-                Foreground = new SolidColorBrush(Color.FromRgb(147, 197, 253)),
-                FontSize = 12,
+                Text = "Active Directory: ",
+                Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+                FontSize = 11,
                 FontWeight = FontWeights.SemiBold
             };
+            txtActiveFolderVal = new TextBlock
+            {
+                Text = activeFolder,
+                Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                FontFamily = new FontFamily("Consolas")
+            };
+            folderPanel.Children.Add(lblFolder);
+            folderPanel.Children.Add(txtActiveFolderVal);
+
             namePanel.Children.Add(txtTitle);
-            namePanel.Children.Add(txtSubtitle);
+            namePanel.Children.Add(folderPanel);
             titlePanel.Children.Add(namePanel);
             headerGrid.Children.Add(titlePanel);
             Grid.SetColumn(titlePanel, 0);
@@ -255,7 +314,8 @@ namespace PhoneVPNDashboard
             kpiGrid.Children.Add(CreateKpiCardWithDot("SYSTEM STATUS", out txtStatusBadge, out statusIndicatorDot, 0));
             kpiGrid.Children.Add(CreateKpiCard("PHONE GATEWAY", out txtGatewayVal, 1, Color.FromRgb(56, 189, 248)));
             kpiGrid.Children.Add(CreateKpiCard("ACTIVE CORES", out txtProcessesVal, 2, Color.FromRgb(250, 204, 21)));
-            kpiGrid.Children.Add(CreateKpiCard("DISCORD VOICE (UDP)", out txtUdpVal, 3, Color.FromRgb(192, 132, 252)));
+            TextBlock unusedTxt;
+            kpiGrid.Children.Add(CreateKpiCard("LOCATION", out unusedTxt, 3, Color.FromRgb(192, 132, 252), "Frankfurt (VLESS)"));
 
             root.Children.Add(kpiGrid);
             Grid.SetRow(kpiGrid, 1);
@@ -267,7 +327,11 @@ namespace PhoneVPNDashboard
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            navLogsBtn = CreateNavTabButton("Real-Time Logs (Anlik Loglar)", true);
+            navLiveFeedBtn = CreateNavTabButton("Live App Traffic (Hangi Uygulama Nereye Bagli)", true);
+            navLiveFeedBtn.Click += (s, e) => SwitchTab("livefeed");
+            navBar.Children.Add(navLiveFeedBtn);
+
+            navLogsBtn = CreateNavTabButton("Real-Time Logs (Anlik Loglar)", false);
             navLogsBtn.Click += (s, e) => SwitchTab("logs");
             navBar.Children.Add(navLogsBtn);
 
@@ -275,7 +339,7 @@ namespace PhoneVPNDashboard
             navRoutingBtn.Click += (s, e) => SwitchTab("routing");
             navBar.Children.Add(navRoutingBtn);
 
-            navSettingsBtn = CreateNavTabButton("Configuration & Settings (Ayarlar)", false);
+            navSettingsBtn = CreateNavTabButton("Configuration & Directory (Ayarlar / Klasor)", false);
             navSettingsBtn.Click += (s, e) => SwitchTab("settings");
             navBar.Children.Add(navSettingsBtn);
 
@@ -284,14 +348,17 @@ namespace PhoneVPNDashboard
 
             Grid contentArea = new Grid { Margin = new Thickness(24, 4, 24, 18) };
 
+            pageLiveFeed = CreateLiveFeedPage();
             pageLogs = CreateLogsPage();
             pageRouting = CreateRoutingInspectorPage();
             pageSettings = CreateSettingsPage();
 
+            contentArea.Children.Add(pageLiveFeed);
             contentArea.Children.Add(pageLogs);
             contentArea.Children.Add(pageRouting);
             contentArea.Children.Add(pageSettings);
 
+            pageLogs.Visibility = Visibility.Collapsed;
             pageRouting.Visibility = Visibility.Collapsed;
             pageSettings.Visibility = Visibility.Collapsed;
 
@@ -306,7 +373,7 @@ namespace PhoneVPNDashboard
             Button btn = new Button
             {
                 Content = text,
-                Padding = new Thickness(18, 9, 18, 9),
+                Padding = new Thickness(16, 9, 16, 9),
                 FontSize = 13,
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(0, 0, 8, 0),
@@ -332,6 +399,10 @@ namespace PhoneVPNDashboard
 
         private void SwitchTab(string tabName)
         {
+            navLiveFeedBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
+            navLiveFeedBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+            navLiveFeedBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+
             navLogsBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
             navLogsBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
             navLogsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
@@ -344,11 +415,20 @@ namespace PhoneVPNDashboard
             navSettingsBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
             navSettingsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
 
+            pageLiveFeed.Visibility = Visibility.Collapsed;
             pageLogs.Visibility = Visibility.Collapsed;
             pageRouting.Visibility = Visibility.Collapsed;
             pageSettings.Visibility = Visibility.Collapsed;
 
-            if (tabName == "logs")
+            if (tabName == "livefeed")
+            {
+                navLiveFeedBtn.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
+                navLiveFeedBtn.Foreground = Brushes.White;
+                navLiveFeedBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
+                pageLiveFeed.Visibility = Visibility.Visible;
+                UpdateLiveConnections();
+            }
+            else if (tabName == "logs")
             {
                 navLogsBtn.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
                 navLogsBtn.Foreground = Brushes.White;
@@ -421,7 +501,7 @@ namespace PhoneVPNDashboard
             return card;
         }
 
-        private Border CreateKpiCard(string title, out TextBlock valBlock, int col, Color accentColor)
+        private Border CreateKpiCard(string title, out TextBlock valBlock, int col, Color accentColor, string defaultText = "CHECKING...")
         {
             Border card = new Border
             {
@@ -446,7 +526,7 @@ namespace PhoneVPNDashboard
 
             valBlock = new TextBlock
             {
-                Text = "CHECKING...",
+                Text = defaultText,
                 Foreground = new SolidColorBrush(accentColor),
                 FontSize = 15,
                 FontWeight = FontWeights.ExtraBold
@@ -456,6 +536,91 @@ namespace PhoneVPNDashboard
             card.Child = sp;
             Grid.SetColumn(card, col);
             return card;
+        }
+
+        private Grid CreateLiveFeedPage()
+        {
+            Grid g = new Grid();
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            Border topBar = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
+                BorderThickness = new Thickness(1, 1, 1, 0),
+                Padding = new Thickness(16, 10, 16, 10)
+            };
+
+            Grid barGrid = new Grid();
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            StackPanel infoPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            TextBlock txtLiveIcon = new TextBlock
+            {
+                Text = "● LIVE SOCKET MONITOR: ",
+                Foreground = new SolidColorBrush(Color.FromRgb(34, 197, 94)),
+                FontWeight = FontWeights.ExtraBold,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            TextBlock txtLiveDesc = new TextBlock
+            {
+                Text = "Real-time list of applications passing through the TUN adapter into Xray & Phone proxy",
+                Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            infoPanel.Children.Add(txtLiveIcon);
+            infoPanel.Children.Add(txtLiveDesc);
+            barGrid.Children.Add(infoPanel);
+            Grid.SetColumn(infoPanel, 0);
+
+            Button btnRefreshConn = new Button
+            {
+                Content = "Refresh Now",
+                Padding = new Thickness(12, 4, 12, 4),
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Background = new SolidColorBrush(Color.FromRgb(14, 165, 233)),
+                Foreground = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                BorderThickness = new Thickness(1),
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            btnRefreshConn.Click += (s, e) => UpdateLiveConnections();
+            barGrid.Children.Add(btnRefreshConn);
+            Grid.SetColumn(btnRefreshConn, 1);
+
+            topBar.Child = barGrid;
+            g.Children.Add(topBar);
+            Grid.SetRow(topBar, 0);
+
+            listConnections = new ListView
+            {
+                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                Foreground = Brushes.White,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 13,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
+                BorderThickness = new Thickness(1)
+            };
+
+            GridView gridView = new GridView();
+            gridView.Columns.Add(new GridViewColumn { Header = "Application (Process)", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 200 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Proto", DisplayMemberBinding = new System.Windows.Data.Binding("Protocol"), Width = 70 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Local Adapter Endpoint", DisplayMemberBinding = new System.Windows.Data.Binding("LocalEndpoint"), Width = 230 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Remote Target (Destination)", DisplayMemberBinding = new System.Windows.Data.Binding("RemoteEndpoint"), Width = 260 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Tunnel Routing", DisplayMemberBinding = new System.Windows.Data.Binding("RouteType"), Width = 220 });
+            gridView.Columns.Add(new GridViewColumn { Header = "State", DisplayMemberBinding = new System.Windows.Data.Binding("Status"), Width = 110 });
+
+            listConnections.View = gridView;
+            g.Children.Add(listConnections);
+            Grid.SetRow(listConnections, 1);
+
+            return g;
         }
 
         private Grid CreateLogsPage()
@@ -476,16 +641,34 @@ namespace PhoneVPNDashboard
             barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            TextBlock liveStatusHint = new TextBlock
+            StackPanel leftControls = new StackPanel { Orientation = Orientation.Horizontal };
+            TextBlock lblSource = new TextBlock
             {
-                Text = "LIVE LOG STREAM (Watching watcher.log every 800ms)",
-                Foreground = new SolidColorBrush(Color.FromRgb(74, 222, 128)),
+                Text = "Log File Source: ",
+                Foreground = Brushes.White,
                 FontWeight = FontWeights.Bold,
                 FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
             };
-            barGrid.Children.Add(liveStatusHint);
-            Grid.SetColumn(liveStatusHint, 0);
+            cmbLogSource = new ComboBox
+            {
+                Background = Brushes.White,
+                Foreground = Brushes.Black,
+                FontWeight = FontWeights.Bold,
+                FontSize = 11,
+                Padding = new Thickness(6, 2, 6, 2)
+            };
+            cmbLogSource.Items.Add("watcher.log (Watcher Status & Health)");
+            cmbLogSource.Items.Add("singbox.log (sing-box Inbound/Outbound Engine)");
+            cmbLogSource.Items.Add("xray-error.log (Xray Core Logs)");
+            cmbLogSource.SelectedIndex = 0;
+            cmbLogSource.SelectionChanged += (s, e) => { lastWatcherLogPos = 0; lastSingboxLogPos = 0; txtLogTerminal.Clear(); ReadLogs(true); };
+
+            leftControls.Children.Add(lblSource);
+            leftControls.Children.Add(cmbLogSource);
+            barGrid.Children.Add(leftControls);
+            Grid.SetColumn(leftControls, 0);
 
             StackPanel rightControls = new StackPanel { Orientation = Orientation.Horizontal };
             chkAutoScroll = new CheckBox
@@ -512,7 +695,7 @@ namespace PhoneVPNDashboard
                 BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
-            btnClear.Click += (s, e) => { txtLogTerminal.Clear(); lastLogPosition = 0; };
+            btnClear.Click += (s, e) => { txtLogTerminal.Clear(); lastWatcherLogPos = 0; lastSingboxLogPos = 0; };
             rightControls.Children.Add(btnClear);
 
             barGrid.Children.Add(rightControls);
@@ -583,10 +766,10 @@ namespace PhoneVPNDashboard
                 Text = "[ Windows Apps (All Traffic) ]\n" +
                        "         |\n" +
                        "         v  (Captured 100% by Wintun TUN Adapter)\n" +
-                       "[ sing-box TUN : 172.19.0.1 ]\n" +
+                       "[ sing-box TUN : 172.19.1.1 / 172.19.0.1 ]\n" +
                        "         |\n" +
                        "         v  (Local SOCKS5 Bridge: 127.0.0.1:17890 / :17880)\n" +
-                       "[ Xray-core Relay ]  --> (UDP packets converted into xudp inside TCP dialerProxy)\n" +
+                       "[ Xray-core Relay ]  --> (UDP converted into xudp inside TCP dialerProxy)\n" +
                        "         |\n" +
                        "         v  (Phone Hotspot or USB Tethering Network)\n" +
                        "[ Phone Proxy Gateway : 172.20.10.1:1082 (iPhone) or :2080 (Android) ]\n" +
@@ -693,6 +876,87 @@ namespace PhoneVPNDashboard
             ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             StackPanel sp = new StackPanel { Margin = new Thickness(0, 10, 0, 10) };
 
+            Border dirBox = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(18),
+                Margin = new Thickness(0, 0, 0, 16)
+            };
+
+            StackPanel dirInner = new StackPanel();
+            dirInner.Children.Add(new TextBlock
+            {
+                Text = "Active Working Folder (Calisilan Klasor)",
+                Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            dirInner.Children.Add(new TextBlock
+            {
+                Text = "If you moved or copied PhoneVPN to another folder, specify the exact folder path below:",
+                Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+                FontSize = 11,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+
+            Grid pathGrid = new Grid();
+            pathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            pathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            txtCustomFolderPath = new TextBox
+            {
+                Text = activeFolder,
+                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                Foreground = Brushes.White,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Padding = new Thickness(8),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105))
+            };
+            pathGrid.Children.Add(txtCustomFolderPath);
+            Grid.SetColumn(txtCustomFolderPath, 0);
+
+            Button btnApplyFolder = new Button
+            {
+                Content = "Apply Folder",
+                Padding = new Thickness(16, 6, 16, 6),
+                FontSize = 12,
+                FontWeight = FontWeights.Bold,
+                Background = new SolidColorBrush(Color.FromRgb(14, 165, 233)),
+                Foreground = Brushes.White,
+                Margin = new Thickness(8, 0, 0, 0),
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            btnApplyFolder.Click += (s, e) =>
+            {
+                string target = txtCustomFolderPath.Text.Trim();
+                if (Directory.Exists(target))
+                {
+                    activeFolder = target;
+                    txtActiveFolderVal.Text = target;
+                    lastWatcherLogPos = 0;
+                    lastSingboxLogPos = 0;
+                    txtLogTerminal.AppendText(string.Format("\n[FOLDER] Active directory changed to: {0}\n", target));
+                    LoadInitialSettings();
+                    ReadLogs(true);
+                }
+                else
+                {
+                    MessageBox.Show("Folder does not exist: " + target, "Invalid Directory", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            };
+            pathGrid.Children.Add(btnApplyFolder);
+            Grid.SetColumn(btnApplyFolder, 1);
+
+            dirInner.Children.Add(pathGrid);
+            dirBox.Child = dirInner;
+            sp.Children.Add(dirBox);
+
             Border settingsBox = new Border
             {
                 Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
@@ -747,6 +1011,28 @@ namespace PhoneVPNDashboard
             cmbVlessMode.Items.Add("all");
             cmbVlessMode.SelectedIndex = 0;
             inner.Children.Add(cmbVlessMode);
+
+            inner.Children.Add(new TextBlock
+            {
+                Text = "sing-box Log Level (Set to 'info' to log every app connection into singbox.log)",
+                Foreground = Brushes.White,
+                FontWeight = FontWeights.Bold,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+            cmbSingboxLogLevel = new ComboBox
+            {
+                Background = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+                Foreground = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Padding = new Thickness(8),
+                Margin = new Thickness(0, 0, 0, 16)
+            };
+            cmbSingboxLogLevel.Items.Add("info (Logs all individual connections)");
+            cmbSingboxLogLevel.Items.Add("warn (Default: errors and warnings only)");
+            cmbSingboxLogLevel.SelectedIndex = 0;
+            inner.Children.Add(cmbSingboxLogLevel);
 
             inner.Children.Add(new TextBlock
             {
@@ -839,10 +1125,11 @@ namespace PhoneVPNDashboard
                 btnSwitchIphone.BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105));
             }
 
-            lastLogPosition = 0;
+            lastWatcherLogPos = 0;
+            lastSingboxLogPos = 0;
             txtLogTerminal.AppendText(string.Format("\n[PLATFORM] Switched active platform to {0}\n", platform.ToUpper()));
             LoadInitialSettings();
-            ReadWatcherLogs(true);
+            ReadLogs(true);
             UpdateProcessStatus();
         }
 
@@ -850,7 +1137,7 @@ namespace PhoneVPNDashboard
         {
             try
             {
-                string settingsPath = Path.Combine(repoRoot, activePlatform, "app", "settings.json");
+                string settingsPath = Path.Combine(activeFolder, "settings.json");
                 if (File.Exists(settingsPath))
                 {
                     string json = File.ReadAllText(settingsPath);
@@ -876,7 +1163,7 @@ namespace PhoneVPNDashboard
                     }
                 }
 
-                string vlessPath = Path.Combine(repoRoot, activePlatform, "app", "vless.txt");
+                string vlessPath = Path.Combine(activeFolder, "vless.txt");
                 if (File.Exists(vlessPath))
                 {
                     txtSettingVlessLink.Text = File.ReadAllText(vlessPath).Trim();
@@ -896,7 +1183,7 @@ namespace PhoneVPNDashboard
         {
             try
             {
-                string settingsPath = Path.Combine(repoRoot, activePlatform, "app", "settings.json");
+                string settingsPath = Path.Combine(activeFolder, "settings.json");
                 if (File.Exists(settingsPath))
                 {
                     string portsStr = txtSettingPorts.Text.Trim();
@@ -909,10 +1196,21 @@ namespace PhoneVPNDashboard
                     File.WriteAllText(settingsPath, newJson);
                 }
 
-                string vlessPath = Path.Combine(repoRoot, activePlatform, "app", "vless.txt");
+                string vlessPath = Path.Combine(activeFolder, "vless.txt");
                 if (!string.IsNullOrEmpty(txtSettingVlessLink.Text.Trim()))
                 {
                     File.WriteAllText(vlessPath, txtSettingVlessLink.Text.Trim());
+                }
+
+                string singboxCfgPath = Path.Combine(activeFolder, "singbox.json");
+                if (File.Exists(singboxCfgPath) && cmbSingboxLogLevel.SelectedIndex == 0)
+                {
+                    string sbContent = File.ReadAllText(singboxCfgPath);
+                    if (sbContent.Contains("\"level\": \"warn\""))
+                    {
+                        sbContent = sbContent.Replace("\"level\": \"warn\"", "\"level\": \"info\"");
+                        File.WriteAllText(singboxCfgPath, sbContent);
+                    }
                 }
 
                 txtLogTerminal.AppendText("\n[SETTINGS] Configuration updated successfully.\n");
@@ -925,40 +1223,117 @@ namespace PhoneVPNDashboard
 
         private void RefreshTimer_Tick(object sender, EventArgs e)
         {
-            ReadWatcherLogs(false);
+            ReadLogs(false);
             UpdateProcessStatus();
         }
 
-        private void ReadWatcherLogs(bool readTailOnly)
+        private void ConnectionsTimer_Tick(object sender, EventArgs e)
+        {
+            if (pageLiveFeed.Visibility == Visibility.Visible)
+            {
+                UpdateLiveConnections();
+            }
+        }
+
+        private void UpdateLiveConnections()
         {
             try
             {
-                string logFile = Path.Combine(repoRoot, activePlatform, "app", "watcher.log");
-                if (!File.Exists(logFile)) return;
-
-                FileInfo fi = new FileInfo(logFile);
-                if (fi.Length < lastLogPosition)
+                ProcessStartInfo psi = new ProcessStartInfo
                 {
-                    lastLogPosition = 0;
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -Command \"Get-NetTCPConnection -State Established,SynSent | Select-Object -First 35 | ForEach-Object { $p = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).Name; if (-not $p) { $p = 'System' }; \"\"$p|$($_.OwningProcess)|$($_.LocalAddress):$($_.LocalPort)|$($_.RemoteAddress):$($_.RemotePort)|$($_.State)\"\" }\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+
+                Process proc = Process.Start(psi);
+                string output = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit();
+
+                List<AppConnectionItem> items = new List<AppConnectionItem>();
+                string[] lines = output.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                foreach (string line in lines)
+                {
+                    string[] parts = line.Split('|');
+                    if (parts.Length >= 5)
+                    {
+                        string procName = parts[0];
+                        string pid = parts[1];
+                        string local = parts[2];
+                        string remote = parts[3];
+                        string state = parts[4];
+
+                        string route = "DIRECT / LOCAL";
+                        if (local.StartsWith("172.19.") || local.StartsWith("127.0.0.1:17890") || local.StartsWith("127.0.0.1:17880"))
+                        {
+                            route = "PROXIED (TUNNEL -> VLESS)";
+                        }
+                        else if (remote.Contains(":1082") || remote.Contains(":2080"))
+                        {
+                            route = "PHONE PROXY GATEWAY";
+                        }
+
+                        items.Add(new AppConnectionItem
+                        {
+                            ProcessName = string.Format("{0} ({1})", procName, pid),
+                            Protocol = "TCP",
+                            LocalEndpoint = local,
+                            RemoteEndpoint = remote,
+                            RouteType = route,
+                            Status = state
+                        });
+                    }
                 }
 
-                if (fi.Length == lastLogPosition) return;
-
-                using (FileStream fs = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                if (items.Count > 0)
                 {
-                    if (readTailOnly && lastLogPosition == 0 && fs.Length > 8192)
+                    listConnections.ItemsSource = items;
+                }
+            }
+            catch {}
+        }
+
+        private void ReadLogs(bool readTailOnly)
+        {
+            string chosenFile = "watcher.log";
+            if (cmbLogSource != null && cmbLogSource.SelectedIndex == 1) chosenFile = "singbox.log";
+            if (cmbLogSource != null && cmbLogSource.SelectedIndex == 2) chosenFile = "xray-error.log";
+
+            string logPath = Path.Combine(activeFolder, chosenFile);
+            if (!File.Exists(logPath)) return;
+
+            try
+            {
+                FileInfo fi = new FileInfo(logPath);
+                long currentPos = chosenFile == "singbox.log" ? lastSingboxLogPos : lastWatcherLogPos;
+
+                if (fi.Length < currentPos)
+                {
+                    currentPos = 0;
+                }
+
+                if (fi.Length == currentPos) return;
+
+                using (FileStream fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    if (readTailOnly && currentPos == 0 && fs.Length > 8192)
                     {
                         fs.Seek(-8192, SeekOrigin.End);
                     }
                     else
                     {
-                        fs.Seek(lastLogPosition, SeekOrigin.Begin);
+                        fs.Seek(currentPos, SeekOrigin.Begin);
                     }
 
                     using (StreamReader reader = new StreamReader(fs, Encoding.UTF8))
                     {
                         string newContent = reader.ReadToEnd();
-                        lastLogPosition = fs.Position;
+                        long newPos = fs.Position;
+                        if (chosenFile == "singbox.log") lastSingboxLogPos = newPos;
+                        else lastWatcherLogPos = newPos;
 
                         if (!string.IsNullOrEmpty(newContent))
                         {
@@ -992,7 +1367,6 @@ namespace PhoneVPNDashboard
                 txtStatusBadge.Text = "ONLINE (TUNNEL ACTIVE)";
                 statusIndicatorDot.Background = new SolidColorBrush(Color.FromRgb(34, 197, 94));
                 txtProcessesVal.Text = "sing-box & Xray RUNNING";
-                txtUdpVal.Text = "ACTIVE (xudp Relay)";
                 txtGatewayVal.Text = activePlatform == "iphone" ? "Hotspot :1082" : "Exclave :2080";
             }
             else if (sbRunning || xrRunning)
@@ -1006,27 +1380,26 @@ namespace PhoneVPNDashboard
                 txtStatusBadge.Text = "STOPPED (OFF)";
                 statusIndicatorDot.Background = new SolidColorBrush(Color.FromRgb(239, 68, 68));
                 txtProcessesVal.Text = "STOPPED";
-                txtUdpVal.Text = "INACTIVE";
                 txtGatewayVal.Text = "DISCONNECTED";
             }
         }
 
         private void RunScriptAsync(string scriptName)
         {
-            string scriptPath = Path.Combine(repoRoot, activePlatform, "app", scriptName);
+            string scriptPath = Path.Combine(activeFolder, scriptName);
             if (!File.Exists(scriptPath))
             {
                 txtLogTerminal.AppendText(string.Format("\n[ERROR] Script not found: {0}\n", scriptPath));
                 return;
             }
 
-            txtLogTerminal.AppendText(string.Format("\n[EXEC] Running {0}...\n", scriptName));
+            txtLogTerminal.AppendText(string.Format("\n[EXEC] Running {0} in {1}...\n", scriptName, activeFolder));
 
             ProcessStartInfo psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
                 Arguments = string.Format("-NoProfile -ExecutionPolicy Bypass -File \"{0}\"", scriptPath),
-                WorkingDirectory = Path.Combine(repoRoot, activePlatform, "app"),
+                WorkingDirectory = activeFolder,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
