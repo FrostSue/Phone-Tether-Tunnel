@@ -608,12 +608,19 @@ namespace PhoneVPNDashboard
                 BorderThickness = new Thickness(1)
             };
 
+            Style itemStyle = new Style(typeof(ListViewItem));
+            itemStyle.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+            itemStyle.Setters.Add(new Setter(Control.FontSizeProperty, 12.0));
+            itemStyle.Setters.Add(new Setter(Control.FontFamilyProperty, new FontFamily("Consolas")));
+            itemStyle.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(15, 23, 42))));
+            listConnections.ItemContainerStyle = itemStyle;
+
             GridView gridView = new GridView();
-            gridView.Columns.Add(new GridViewColumn { Header = "Application (Process)", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 200 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Proto", DisplayMemberBinding = new System.Windows.Data.Binding("Protocol"), Width = 70 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Application (Process)", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 210 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Proto", DisplayMemberBinding = new System.Windows.Data.Binding("Protocol"), Width = 65 });
             gridView.Columns.Add(new GridViewColumn { Header = "Local Adapter Endpoint", DisplayMemberBinding = new System.Windows.Data.Binding("LocalEndpoint"), Width = 230 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Remote Target (Destination)", DisplayMemberBinding = new System.Windows.Data.Binding("RemoteEndpoint"), Width = 260 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Tunnel Routing", DisplayMemberBinding = new System.Windows.Data.Binding("RouteType"), Width = 220 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Remote Target (Destination)", DisplayMemberBinding = new System.Windows.Data.Binding("RemoteEndpoint"), Width = 250 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Tunnel Routing", DisplayMemberBinding = new System.Windows.Data.Binding("RouteType"), Width = 230 });
             gridView.Columns.Add(new GridViewColumn { Header = "State", DisplayMemberBinding = new System.Windows.Data.Binding("Status"), Width = 110 });
 
             listConnections.View = gridView;
@@ -1228,6 +1235,7 @@ namespace PhoneVPNDashboard
         }
 
         private HashSet<string> seenConnections = new HashSet<string>();
+        private Dictionary<int, string> procNameCache = new Dictionary<int, string>();
 
         private void ConnectionsTimer_Tick(object sender, EventArgs e)
         {
@@ -1240,8 +1248,8 @@ namespace PhoneVPNDashboard
             {
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
-                    FileName = "powershell.exe",
-                    Arguments = "-NoProfile -Command \"Get-NetTCPConnection -State Established,SynSent | Select-Object -First 40 | ForEach-Object { $p = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).Name; if (-not $p) { $p = 'System' }; \"\"$p|$($_.OwningProcess)|$($_.LocalAddress):$($_.LocalPort)|$($_.RemoteAddress):$($_.RemotePort)|$($_.State)\"\" }\"",
+                    FileName = "netstat.exe",
+                    Arguments = "-ano -p tcp",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     CreateNoWindow = true
@@ -1258,14 +1266,27 @@ namespace PhoneVPNDashboard
 
                 foreach (string line in lines)
                 {
-                    string[] parts = line.Split('|');
+                    string trimmed = line.Trim();
+                    if (!trimmed.StartsWith("TCP", StringComparison.OrdinalIgnoreCase)) continue;
+                    string[] parts = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length >= 5)
                     {
-                        string procName = parts[0];
-                        string pid = parts[1];
-                        string local = parts[2];
-                        string remote = parts[3];
-                        string state = parts[4];
+                        string local = parts[1];
+                        string remote = parts[2];
+                        string state = parts[3];
+                        string pidStr = parts[4];
+
+                        int pid = 0;
+                        int.TryParse(pidStr, out pid);
+                        string procName = "System";
+                        if (pid > 0)
+                        {
+                            if (!procNameCache.TryGetValue(pid, out procName))
+                            {
+                                try { procName = Process.GetProcessById(pid).ProcessName; } catch { procName = "PID:" + pid; }
+                                procNameCache[pid] = procName;
+                            }
+                        }
 
                         string route = "DIRECT / LOCAL";
                         bool isProxied = false;
@@ -1290,13 +1311,13 @@ namespace PhoneVPNDashboard
                             Status = state
                         });
 
-                        if (isProxied)
+                        if (isProxied && state.Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
                         {
                             string connKey = string.Format("{0}->{1}", procName, remote);
                             if (!seenConnections.Contains(connKey))
                             {
                                 seenConnections.Add(connKey);
-                                if (seenConnections.Count > 120) seenConnections.Clear();
+                                if (seenConnections.Count > 150) seenConnections.Clear();
 
                                 string logLine = string.Format("[{0}] [TRAFFIC] {1} ({2}) -> {3} [TUNNEL PROXIED -> VLESS]\n", nowTime, procName, pid, remote);
                                 txtLogTerminal.AppendText(logLine);
