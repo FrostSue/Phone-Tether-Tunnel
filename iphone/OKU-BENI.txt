@@ -1,0 +1,66 @@
+﻿iPhone VPN (Shadowrocket) – Kurulum ve Kullanım
+================================================
+
+Ne işe yarar?
+  iPhone'daki Shadowrocket bağlantınızı bilgisayara aktarır. Bilgisayarın TÜM trafiği
+  (web, oyunlar, Discord yazı + SESLİ SOHBET, TCP + UDP) tünelden gider.
+
+  Yapı:
+    TCP (web vb.)      : PC -> sing-box -> Xray -> iPhone Proxy Share -> Shadowrocket -> sunucu
+    UDP (Discord sesi) : PC -> sing-box -> Xray -> VLESS (TCP içinde) -> iPhone Proxy Share -> sunucu
+
+  Neden? Shadowrocket'ın Proxy Share'i UDP'yi İLETMİYOR (test edildi). Bu yüzden UDP,
+  bilgisayarın kendi VLESS bağlantısının içinde Shadowrocket'ın TCP paylaşımından geçer.
+
+
+1) TELEFONDA (Shadowrocket)
+---------------------------
+  1. Sunucunuza bağlanın.
+  2. Ayarlar > Proxy > "Enable Share" AÇIK (port genelde 1082, paket kendisi bulur).
+  3. Sunucu ayarı > UDP Relay: xudp
+  4. Ayarlar > UDP: Enable Relay AÇIK, Disable STUN KAPALI
+  5. Tunnel > Include All Networks: KAPALI     Proxy > HTTPS Decrypt: KAPALI
+  6. Kişisel Erişim Noktası'nı (Hotspot) açın, Shadowrocket'ı açık bırakın.
+
+
+2) BİLGİSAYARDA – İLK KURULUM
+-----------------------------
+  1. Bilgisayarı iPhone'un Hotspot'una (veya USB'ye) bağlayın.
+  2. install.bat'a çift tıklayın.
+     - Dosyalar %USERPROFILE%\PhoneVPN-iPhone klasörüne kopyalanır.
+     - sing-box ve Xray, telefonun paylaşımı üzerinden indirilir ve SHA256 ile doğrulanır.
+     - Masaüstüne: iPhone VPN Baslat / iPhone VPN Durdur / iPhone VPN Test
+  3. Not Defteri'nde vless.txt açılır: Shadowrocket'ta sunucuya sola kaydırın (veya uzun
+     basın) > Paylaş > Kopyala. "vless://..." linkini boş satıra yapıştırıp KAYDEDİN.
+     (Discord sesi için ŞART. Boş kalırsa sadece web vb. çalışır.)
+  4. SmartScreen uyarısı çıkarsa: "Ek bilgi" > "Yine de çalıştır".
+
+
+3) KULLANIM
+-----------
+  - Başlat:  "iPhone VPN Baslat" (yönetici izni -> Evet). Siyah pencere açılıp kapanır, normal.
+  - Durdur:  "iPhone VPN Durdur"
+  - Kontrol: "iPhone VPN Test". En altta şunu görmelisiniz:
+      [OK] Bilgisayarin UDP trafigi tunelden gidiyor (Discord sesi calisir)
+
+  Başlatırken Android sistemini, v2rayN'i, Proxifier'ı ve başka sing-box/xray örneklerini
+  kendisi kapatır; v2rayN'in bıraktığı Windows sistem proxy ayarını da sıfırlar.
+
+
+4) OTOMATİK
+-----------
+  - Telefonun IP'si veya Shadowrocket portu değişirse kendisi bulur (5 sn'de bir).
+  - USB takarsanız ona geçer (Windows'ta "Apple Devices" veya iTunes kurulu olmalı).
+  - allowInsecure=1 olan linklerde sunucu sertifikası telefon üzerinden otomatik sabitlenir.
+  - vless.txt'yi değiştirirseniz birkaç saniyede uygulanır.
+  - Tüneli atlayan bağlantıları her 5 saniyede bir kapatır (sızıntı önleme).
+
+
+5) SORUN GİDERME
+----------------
+  - "Telefonda proxy bulunamadi": Enable Share açık mı? Port settings.json "ports" listesinde mi?
+  - "UDP gecmiyor": vless.txt doğru mu? watcher.log'da "VLESS linki kullanilamadi" satırına bakın.
+  - TLS'siz (security=none) ve IP adresli linkleri Xray 26 kabul etmiyor.
+  - settings.json -> "vlessMode": "udp" (varsayılan) veya "all" (tüm trafik VLESS'ten).
+  - Kayıtlar: %USERPROFILE%\PhoneVPN-iPhone\watcher.log, singbox.log, xray-error.log
+  - vless.txt sunucunuzun şifresi gibidir, kimseyle paylaşmayın (git'e de eklenmez).
