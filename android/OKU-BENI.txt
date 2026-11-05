@@ -1,0 +1,52 @@
+﻿Android VPN (Exclave) – Kurulum ve Kullanım
+============================================
+
+Ne işe yarar?
+  Android telefondaki Exclave (VLESS) bağlantısını bilgisayara aktarır. Bilgisayarın TÜM
+  trafiği (web, oyunlar, Discord sesi dahil, TCP + UDP) telefonun tünelinden gider.
+
+  Yapı: Bilgisayar -> sing-box (TUN) -> Xray -> Telefon :2080 (Exclave) -> sunucu
+
+
+1) TELEFONDA (Exclave)
+----------------------
+  1. Sunucunuza bağlanın.
+  2. Ayarlar > "Allow Connections from the LAN" (LAN'dan bağlantılara izin ver) AÇIK.
+     SOCKS5 portu 2080 olmalı. Ayarı değiştirdiyseniz bağlantıyı kapatıp açın.
+  3. Exclave için pil optimizasyonunu kapatın (Kısıtlanmamış).
+  4. Hotspot'u veya USB tethering'i (USB internet paylaşımı) açın.
+
+
+2) BİLGİSAYARDA – İLK KURULUM
+-----------------------------
+  1. Bilgisayarı telefonun Hotspot'una veya USB'ye bağlayın (Exclave açık).
+  2. install.bat'a çift tıklayın.
+     - Dosyalar %USERPROFILE%\PhoneVPN-Android klasörüne kopyalanır.
+     - sing-box ve Xray resmi GitHub sürümlerinden, telefonun tüneli üzerinden indirilir
+       ve SHA256 ile doğrulanır (paketinizden düşmez).
+     - Masaüstüne: Android VPN Baslat / Android VPN Durdur / Android VPN Test
+  3. SmartScreen uyarısı çıkarsa: "Ek bilgi" > "Yine de çalıştır".
+
+
+3) KULLANIM
+-----------
+  - Başlat:  "Android VPN Baslat" (yönetici izni -> Evet). Siyah pencere açılıp kapanır, normal.
+  - Durdur:  "Android VPN Durdur"
+  - Kontrol: "Android VPN Test" -> TCP ve UDP satırları [OK] olmalı.
+
+  Başlatırken iPhone sistemini, v2rayN'i, Proxifier'ı ve başka sing-box/xray örneklerini
+  kendisi kapatır (çakışmasınlar diye).
+
+
+4) OTOMATİK
+-----------
+  - Telefonun IP'si değişirse kendisi bulur; USB takınca USB'ye, çıkarınca Wi-Fi'ye geçer.
+  - Tüneli atlayan bağlantıları her 5 saniyede bir kapatır (sızıntı önleme).
+  - Telefon bulunamazsa trafik doğrudan gitmez, bekler.
+
+
+5) SORUN GİDERME
+----------------
+  - "Telefonda 2080 portu bulunamadi": Exclave açık mı, LAN izni açık mı, port 2080 mi?
+  - Kayıtlar: %USERPROFILE%\PhoneVPN-Android\watcher.log, sing-box.log, xray\xray-error.log
+  - Kaldırmak: Android VPN Durdur > klasörü ve kısayolları silin.
