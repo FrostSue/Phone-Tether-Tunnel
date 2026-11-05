@@ -1,0 +1,5 @@
+# Shadowrocket'taki sunucunuzun vless:// linkini asagidaki bos satira yapistirin ve kaydedin.
+# (Shadowrocket > sunucuya sola kaydir / uzun bas > Paylas > Kopyala)
+# Bu dosya doluysa UDP (Discord sesi) VLESS icinde telefonun TCP paylasimindan gider.
+# Bos birakirsaniz sadece TCP (web vb.) calisir.
+
