@@ -25,14 +25,21 @@ namespace PhoneVPNDashboard
     {
         public string ProcessName { get; set; }
         public string Protocol { get; set; }
-        public string LocalEndpoint { get; set; }
-        public string RemoteEndpoint { get; set; }
-        public string RouteType { get; set; }
+        public string Destination { get; set; }
+        public string LocalInterface { get; set; }
+        public string Routing { get; set; }
         public string Status { get; set; }
     }
 
     public class DashboardWindow : Window
     {
+        private static readonly HashSet<string> SystemIgnoreList = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "System", "svchost", "services", "lsass", "wininit", "csrss", "smss",
+            "spoolsv", "fontdrvhost", "registry", "idle", "dwm", "taskhostw",
+            "phonevpn-xray", "phonevpn-singbox", "android-xray", "android-singbox"
+        };
+
         private string activePlatform = "iphone";
         private string activeFolder = "";
         private long lastWatcherLogPos = 0;
@@ -55,12 +62,10 @@ namespace PhoneVPNDashboard
 
         private Button navLiveFeedBtn;
         private Button navLogsBtn;
-        private Button navRoutingBtn;
         private Button navSettingsBtn;
 
         private Grid pageLiveFeed;
         private Grid pageLogs;
-        private Grid pageRouting;
         private Grid pageSettings;
 
         private ListView listConnections;
@@ -74,15 +79,18 @@ namespace PhoneVPNDashboard
         private TextBox txtSettingInterval;
         private TextBox txtSettingVlessLink;
 
+        private HashSet<string> seenConnections = new HashSet<string>();
+        private Dictionary<int, string> procNameCache = new Dictionary<int, string>();
+
         public DashboardWindow()
         {
             activeFolder = AutoDetectActiveFolder();
 
-            Title = "Phone-Tether-Tunnel Live Monitor & Dashboard";
-            Width = 1150;
-            Height = 820;
-            MinWidth = 950;
-            MinHeight = 680;
+            Title = "Phone-Tether-Tunnel Dashboard";
+            Width = 1120;
+            Height = 780;
+            MinWidth = 920;
+            MinHeight = 650;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
 
@@ -98,7 +106,7 @@ namespace PhoneVPNDashboard
             refreshTimer.Start();
 
             connectionsTimer = new DispatcherTimer();
-            connectionsTimer.Interval = TimeSpan.FromSeconds(2);
+            connectionsTimer.Interval = TimeSpan.FromSeconds(1.5);
             connectionsTimer.Tick += ConnectionsTimer_Tick;
             connectionsTimer.Start();
 
@@ -186,7 +194,7 @@ namespace PhoneVPNDashboard
             StackPanel namePanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             TextBlock txtTitle = new TextBlock
             {
-                Text = "Phone-Tether-Tunnel Live Monitor",
+                Text = "Phone-Tether-Tunnel",
                 Foreground = Brushes.White,
                 FontSize = 18,
                 FontWeight = FontWeights.Bold
@@ -314,6 +322,7 @@ namespace PhoneVPNDashboard
             kpiGrid.Children.Add(CreateKpiCardWithDot("SYSTEM STATUS", out txtStatusBadge, out statusIndicatorDot, 0));
             kpiGrid.Children.Add(CreateKpiCard("PHONE GATEWAY", out txtGatewayVal, 1, Color.FromRgb(56, 189, 248)));
             kpiGrid.Children.Add(CreateKpiCard("ACTIVE CORES", out txtProcessesVal, 2, Color.FromRgb(250, 204, 21)));
+
             TextBlock unusedTxt;
             kpiGrid.Children.Add(CreateKpiCard("LOCATION", out unusedTxt, 3, Color.FromRgb(192, 132, 252), "Frankfurt (VLESS)"));
 
@@ -327,19 +336,15 @@ namespace PhoneVPNDashboard
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            navLiveFeedBtn = CreateNavTabButton("Live App Traffic (Hangi Uygulama Nereye Bagli)", true);
+            navLiveFeedBtn = CreateNavTabButton("Live Traffic", true);
             navLiveFeedBtn.Click += (s, e) => SwitchTab("livefeed");
             navBar.Children.Add(navLiveFeedBtn);
 
-            navLogsBtn = CreateNavTabButton("Real-Time Logs (Anlik Loglar)", false);
+            navLogsBtn = CreateNavTabButton("Logs", false);
             navLogsBtn.Click += (s, e) => SwitchTab("logs");
             navBar.Children.Add(navLogsBtn);
 
-            navRoutingBtn = CreateNavTabButton("Traffic Routing Inspector (Nelerin Nelerden Gectigi)", false);
-            navRoutingBtn.Click += (s, e) => SwitchTab("routing");
-            navBar.Children.Add(navRoutingBtn);
-
-            navSettingsBtn = CreateNavTabButton("Configuration & Directory (Ayarlar / Klasor)", false);
+            navSettingsBtn = CreateNavTabButton("Settings", false);
             navSettingsBtn.Click += (s, e) => SwitchTab("settings");
             navBar.Children.Add(navSettingsBtn);
 
@@ -350,16 +355,13 @@ namespace PhoneVPNDashboard
 
             pageLiveFeed = CreateLiveFeedPage();
             pageLogs = CreateLogsPage();
-            pageRouting = CreateRoutingInspectorPage();
             pageSettings = CreateSettingsPage();
 
             contentArea.Children.Add(pageLiveFeed);
             contentArea.Children.Add(pageLogs);
-            contentArea.Children.Add(pageRouting);
             contentArea.Children.Add(pageSettings);
 
             pageLogs.Visibility = Visibility.Collapsed;
-            pageRouting.Visibility = Visibility.Collapsed;
             pageSettings.Visibility = Visibility.Collapsed;
 
             root.Children.Add(contentArea);
@@ -373,7 +375,7 @@ namespace PhoneVPNDashboard
             Button btn = new Button
             {
                 Content = text,
-                Padding = new Thickness(16, 9, 16, 9),
+                Padding = new Thickness(22, 9, 22, 9),
                 FontSize = 13,
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(0, 0, 8, 0),
@@ -407,17 +409,12 @@ namespace PhoneVPNDashboard
             navLogsBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
             navLogsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
 
-            navRoutingBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
-            navRoutingBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
-            navRoutingBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
-
             navSettingsBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
             navSettingsBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
             navSettingsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
 
             pageLiveFeed.Visibility = Visibility.Collapsed;
             pageLogs.Visibility = Visibility.Collapsed;
-            pageRouting.Visibility = Visibility.Collapsed;
             pageSettings.Visibility = Visibility.Collapsed;
 
             if (tabName == "livefeed")
@@ -434,13 +431,6 @@ namespace PhoneVPNDashboard
                 navLogsBtn.Foreground = Brushes.White;
                 navLogsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
                 pageLogs.Visibility = Visibility.Visible;
-            }
-            else if (tabName == "routing")
-            {
-                navRoutingBtn.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
-                navRoutingBtn.Foreground = Brushes.White;
-                navRoutingBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
-                pageRouting.Visibility = Visibility.Visible;
             }
             else if (tabName == "settings")
             {
@@ -559,7 +549,7 @@ namespace PhoneVPNDashboard
             StackPanel infoPanel = new StackPanel { Orientation = Orientation.Horizontal };
             TextBlock txtLiveIcon = new TextBlock
             {
-                Text = "● LIVE SOCKET MONITOR: ",
+                Text = "● ACTIVE INTERNET TRAFFIC: ",
                 Foreground = new SolidColorBrush(Color.FromRgb(34, 197, 94)),
                 FontWeight = FontWeights.ExtraBold,
                 FontSize = 12,
@@ -567,7 +557,7 @@ namespace PhoneVPNDashboard
             };
             TextBlock txtLiveDesc = new TextBlock
             {
-                Text = "Real-time list of applications passing through the TUN adapter into Xray & Phone proxy",
+                Text = "Applications connected through the tunnel to remote destinations",
                 Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
                 FontWeight = FontWeights.SemiBold,
                 FontSize = 12,
@@ -580,8 +570,8 @@ namespace PhoneVPNDashboard
 
             Button btnRefreshConn = new Button
             {
-                Content = "Refresh Now",
-                Padding = new Thickness(12, 4, 12, 4),
+                Content = "Refresh",
+                Padding = new Thickness(14, 4, 14, 4),
                 FontSize = 11,
                 FontWeight = FontWeights.Bold,
                 Background = new SolidColorBrush(Color.FromRgb(14, 165, 233)),
@@ -616,12 +606,12 @@ namespace PhoneVPNDashboard
             listConnections.ItemContainerStyle = itemStyle;
 
             GridView gridView = new GridView();
-            gridView.Columns.Add(new GridViewColumn { Header = "Application (Process)", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 210 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Application", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 180 });
             gridView.Columns.Add(new GridViewColumn { Header = "Proto", DisplayMemberBinding = new System.Windows.Data.Binding("Protocol"), Width = 65 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Local Adapter Endpoint", DisplayMemberBinding = new System.Windows.Data.Binding("LocalEndpoint"), Width = 230 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Remote Target (Destination)", DisplayMemberBinding = new System.Windows.Data.Binding("RemoteEndpoint"), Width = 250 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Tunnel Routing", DisplayMemberBinding = new System.Windows.Data.Binding("RouteType"), Width = 230 });
-            gridView.Columns.Add(new GridViewColumn { Header = "State", DisplayMemberBinding = new System.Windows.Data.Binding("Status"), Width = 110 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Remote Target (Destination)", DisplayMemberBinding = new System.Windows.Data.Binding("Destination"), Width = 280 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Local Endpoint", DisplayMemberBinding = new System.Windows.Data.Binding("LocalInterface"), Width = 230 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Tunnel Routing", DisplayMemberBinding = new System.Windows.Data.Binding("Routing"), Width = 210 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Status", DisplayMemberBinding = new System.Windows.Data.Binding("Status"), Width = 95 });
 
             listConnections.View = gridView;
             g.Children.Add(listConnections);
@@ -732,151 +722,6 @@ namespace PhoneVPNDashboard
             return g;
         }
 
-        private Grid CreateRoutingInspectorPage()
-        {
-            Grid g = new Grid();
-            ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            StackPanel rootPanel = new StackPanel { Margin = new Thickness(0, 10, 0, 10) };
-
-            Border flowCard = new Border
-            {
-                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(18),
-                Margin = new Thickness(0, 0, 0, 16)
-            };
-
-            StackPanel flowContent = new StackPanel();
-            TextBlock flowHeader = new TextBlock
-            {
-                Text = "Visual End-to-End Tunnel Pipeline (Hangi Paket Nereden Geciyor?)",
-                Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
-                FontWeight = FontWeights.Bold,
-                FontSize = 15,
-                Margin = new Thickness(0, 0, 0, 12)
-            };
-            flowContent.Children.Add(flowHeader);
-
-            Border diagramBox = new Border
-            {
-                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(14)
-            };
-
-            TextBlock flowDiagram = new TextBlock
-            {
-                Text = "[ Windows Apps (All Traffic) ]\n" +
-                       "         |\n" +
-                       "         v  (Captured 100% by Wintun TUN Adapter)\n" +
-                       "[ sing-box TUN : 172.19.1.1 / 172.19.0.1 ]\n" +
-                       "         |\n" +
-                       "         v  (Local SOCKS5 Bridge: 127.0.0.1:17890 / :17880)\n" +
-                       "[ Xray-core Relay ]  --> (UDP converted into xudp inside TCP dialerProxy)\n" +
-                       "         |\n" +
-                       "         v  (Phone Hotspot or USB Tethering Network)\n" +
-                       "[ Phone Proxy Gateway : 172.20.10.1:1082 (iPhone) or :2080 (Android) ]\n" +
-                       "         |\n" +
-                       "         v  (Encrypted VLESS Pipeline via Cellular Data)\n" +
-                       "[ Remote VLESS Server ] ──> Global Internet Egress",
-                Foreground = new SolidColorBrush(Color.FromRgb(248, 250, 252)),
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 13,
-                FontWeight = FontWeights.Bold,
-                LineHeight = 20
-            };
-            diagramBox.Child = flowDiagram;
-            flowContent.Children.Add(diagramBox);
-            flowCard.Child = flowContent;
-            rootPanel.Children.Add(flowCard);
-
-            TextBlock tableHeader = new TextBlock
-            {
-                Text = "Protocol-by-Protocol Detailed Matrix",
-                Foreground = Brushes.White,
-                FontWeight = FontWeights.Bold,
-                FontSize = 15,
-                Margin = new Thickness(0, 4, 0, 10)
-            };
-            rootPanel.Children.Add(tableHeader);
-
-            rootPanel.Children.Add(CreateRoutingItem(
-                "Web & Browser Traffic (TCP Port 80 & 443)",
-                "sing-box TUN  -->  Xray-core (:17890)  -->  Shadowrocket Proxy Share (:1082)  -->  VLESS",
-                "Delivered at full native TCP throughput. Handled directly by phone proxy share without packet drop."
-            ));
-
-            rootPanel.Children.Add(CreateRoutingItem(
-                "Discord Voice & WebRTC Channels (UDP 50000+)",
-                "sing-box TUN  -->  Xray (VLESS Outbound, xudp inside TCP dialerProxy)  -->  Proxy Share (:1082)",
-                "CRITICAL: Shadowrocket drops raw UDP. Xray wraps UDP in xudp inside a TCP connection via vless.txt, guaranteeing crystal clear voice."
-            ));
-
-            rootPanel.Children.Add(CreateRoutingItem(
-                "System DNS Lookups (UDP Port 53)",
-                "sing-box Local DNS Intercept  -->  Resolved Remotely via VLESS Upstream",
-                "Completely prevents ISP DNS poisoning, blocking, and ISP query surveillance."
-            ));
-
-            rootPanel.Children.Add(CreateRoutingItem(
-                "Data Leak Guard (SetTcpEntry DELETE_TCB)",
-                "Physical Wi-Fi/USB Network Adapter  -->  Force Terminated by watcher.ps1 Loop",
-                "Connections created during restart gaps are terminated so apps reconnect through the encrypted TUN."
-            ));
-
-            scroll.Content = rootPanel;
-            g.Children.Add(scroll);
-            return g;
-        }
-
-        private Border CreateRoutingItem(string title, string path, string reason)
-        {
-            Border b = new Border
-            {
-                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(16, 12, 16, 12),
-                Margin = new Thickness(0, 0, 0, 10)
-            };
-
-            StackPanel sp = new StackPanel();
-            TextBlock t = new TextBlock
-            {
-                Text = title,
-                Foreground = new SolidColorBrush(Color.FromRgb(74, 222, 128)),
-                FontWeight = FontWeights.Bold,
-                FontSize = 13
-            };
-            TextBlock p = new TextBlock
-            {
-                Text = "Path: " + path,
-                Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
-                FontFamily = new FontFamily("Consolas"),
-                FontWeight = FontWeights.Bold,
-                FontSize = 12,
-                Margin = new Thickness(0, 4, 0, 4)
-            };
-            TextBlock r = new TextBlock
-            {
-                Text = reason,
-                Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap
-            };
-
-            sp.Children.Add(t);
-            sp.Children.Add(p);
-            sp.Children.Add(r);
-            b.Child = sp;
-            return b;
-        }
-
         private Grid CreateSettingsPage()
         {
             Grid g = new Grid();
@@ -896,7 +741,7 @@ namespace PhoneVPNDashboard
             StackPanel dirInner = new StackPanel();
             dirInner.Children.Add(new TextBlock
             {
-                Text = "Active Working Folder (Calisilan Klasor)",
+                Text = "Active Directory",
                 Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
                 FontWeight = FontWeights.Bold,
                 FontSize = 14,
@@ -904,7 +749,7 @@ namespace PhoneVPNDashboard
             });
             dirInner.Children.Add(new TextBlock
             {
-                Text = "If you moved or copied PhoneVPN to another folder, specify the exact folder path below:",
+                Text = "Specify the exact directory where Phone-Tether-Tunnel scripts and binaries reside:",
                 Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184)),
                 FontSize = 11,
                 Margin = new Thickness(0, 0, 0, 8)
@@ -930,7 +775,7 @@ namespace PhoneVPNDashboard
 
             Button btnApplyFolder = new Button
             {
-                Content = "Apply Folder",
+                Content = "Apply",
                 Padding = new Thickness(16, 6, 16, 6),
                 FontSize = 12,
                 FontWeight = FontWeights.Bold,
@@ -999,7 +844,7 @@ namespace PhoneVPNDashboard
 
             inner.Children.Add(new TextBlock
             {
-                Text = "VLESS Mode (vlessMode: 'udp' for Discord Voice only, 'all' for entire PC traffic)",
+                Text = "VLESS Mode (vlessMode: 'udp' for Discord Voice, 'all' for entire traffic)",
                 Foreground = Brushes.White,
                 FontWeight = FontWeights.Bold,
                 FontSize = 13,
@@ -1021,7 +866,7 @@ namespace PhoneVPNDashboard
 
             inner.Children.Add(new TextBlock
             {
-                Text = "sing-box Log Level (Set to 'info' to log every app connection into singbox.log)",
+                Text = "sing-box Log Level",
                 Foreground = Brushes.White,
                 FontWeight = FontWeights.Bold,
                 FontSize = 13,
@@ -1234,9 +1079,6 @@ namespace PhoneVPNDashboard
             UpdateProcessStatus();
         }
 
-        private HashSet<string> seenConnections = new HashSet<string>();
-        private Dictionary<int, string> procNameCache = new Dictionary<int, string>();
-
         private void ConnectionsTimer_Tick(object sender, EventArgs e)
         {
             UpdateLiveConnections();
@@ -1276,6 +1118,11 @@ namespace PhoneVPNDashboard
                         string state = parts[3];
                         string pidStr = parts[4];
 
+                        if (!state.Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase)) continue;
+
+                        if (remote.StartsWith("0.0.0.0") || remote.StartsWith("127.0.0.1") || remote.StartsWith("::")) continue;
+                        if (remote.EndsWith(":0") || local.EndsWith(":0")) continue;
+
                         int pid = 0;
                         int.TryParse(pidStr, out pid);
                         string procName = "System";
@@ -1288,30 +1135,33 @@ namespace PhoneVPNDashboard
                             }
                         }
 
-                        string route = "DIRECT / LOCAL";
+                        if (SystemIgnoreList.Contains(procName)) continue;
+
+                        string route = "Direct / Local";
                         bool isProxied = false;
 
-                        if (local.StartsWith("172.19.") || local.StartsWith("127.0.0.1:17890") || local.StartsWith("127.0.0.1:17880"))
+                        if (local.StartsWith("172.19."))
                         {
-                            route = "PROXIED (TUNNEL -> VLESS)";
+                            route = "Proxied (TUN)";
                             isProxied = true;
                         }
                         else if (remote.Contains(":1082") || remote.Contains(":2080"))
                         {
-                            route = "PHONE PROXY GATEWAY";
+                            route = "Proxy Gateway";
+                            isProxied = true;
                         }
 
                         items.Add(new AppConnectionItem
                         {
-                            ProcessName = string.Format("{0} ({1})", procName, pid),
+                            ProcessName = procName,
                             Protocol = "TCP",
-                            LocalEndpoint = local,
-                            RemoteEndpoint = remote,
-                            RouteType = route,
+                            Destination = remote,
+                            LocalInterface = local,
+                            Routing = route,
                             Status = state
                         });
 
-                        if (isProxied && state.Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
+                        if (isProxied)
                         {
                             string connKey = string.Format("{0}->{1}", procName, remote);
                             if (!seenConnections.Contains(connKey))
@@ -1319,7 +1169,7 @@ namespace PhoneVPNDashboard
                                 seenConnections.Add(connKey);
                                 if (seenConnections.Count > 150) seenConnections.Clear();
 
-                                string logLine = string.Format("[{0}] [TRAFFIC] {1} ({2}) -> {3} [TUNNEL PROXIED -> VLESS]\n", nowTime, procName, pid, remote);
+                                string logLine = string.Format("[{0}] [TRAFFIC] {1} -> {2} [{3}]\n", nowTime, procName, remote, route);
                                 txtLogTerminal.AppendText(logLine);
                                 if (chkAutoScroll.IsChecked == true)
                                 {
@@ -1330,7 +1180,7 @@ namespace PhoneVPNDashboard
                     }
                 }
 
-                if (items.Count > 0 && listConnections != null)
+                if (listConnections != null)
                 {
                     listConnections.ItemsSource = items;
                 }
