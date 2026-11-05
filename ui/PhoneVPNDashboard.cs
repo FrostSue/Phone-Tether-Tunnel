@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Diagnostics;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -23,6 +24,7 @@ namespace PhoneVPNDashboard
 
     public class AppConnectionItem
     {
+        public string Time { get; set; }
         public string ProcessName { get; set; }
         public string Protocol { get; set; }
         public string Destination { get; set; }
@@ -37,7 +39,9 @@ namespace PhoneVPNDashboard
         {
             "System", "svchost", "services", "lsass", "wininit", "csrss", "smss",
             "spoolsv", "fontdrvhost", "registry", "idle", "dwm", "taskhostw",
-            "phonevpn-xray", "phonevpn-singbox", "android-xray", "android-singbox"
+            "phonevpn-xray", "phonevpn-singbox", "android-xray", "android-singbox",
+            "msedgewebview2", "runtimebroker", "smartscreen", "searchapp",
+            "searchhost", "startmenuexperiencehost", "backgroundtaskhost"
         };
 
         private string activePlatform = "iphone";
@@ -69,6 +73,7 @@ namespace PhoneVPNDashboard
         private Grid pageSettings;
 
         private ListView listConnections;
+        private ObservableCollection<AppConnectionItem> liveConnectionsList = new ObservableCollection<AppConnectionItem>();
         private TextBox txtLogTerminal;
         private ComboBox cmbLogSource;
         private CheckBox chkAutoScroll;
@@ -79,7 +84,7 @@ namespace PhoneVPNDashboard
         private TextBox txtSettingInterval;
         private TextBox txtSettingVlessLink;
 
-        private HashSet<string> seenConnections = new HashSet<string>();
+        private HashSet<string> seenEndpoints = new HashSet<string>();
         private Dictionary<int, string> procNameCache = new Dictionary<int, string>();
 
         public DashboardWindow()
@@ -106,7 +111,7 @@ namespace PhoneVPNDashboard
             refreshTimer.Start();
 
             connectionsTimer = new DispatcherTimer();
-            connectionsTimer.Interval = TimeSpan.FromSeconds(1.5);
+            connectionsTimer.Interval = TimeSpan.FromMilliseconds(500);
             connectionsTimer.Tick += ConnectionsTimer_Tick;
             connectionsTimer.Start();
 
@@ -549,7 +554,7 @@ namespace PhoneVPNDashboard
             StackPanel infoPanel = new StackPanel { Orientation = Orientation.Horizontal };
             TextBlock txtLiveIcon = new TextBlock
             {
-                Text = "● ACTIVE INTERNET TRAFFIC: ",
+                Text = "● ACTIVE APPLICATION TRAFFIC: ",
                 Foreground = new SolidColorBrush(Color.FromRgb(34, 197, 94)),
                 FontWeight = FontWeights.ExtraBold,
                 FontSize = 12,
@@ -557,7 +562,7 @@ namespace PhoneVPNDashboard
             };
             TextBlock txtLiveDesc = new TextBlock
             {
-                Text = "Applications connected through the tunnel to remote destinations",
+                Text = "Real-time socket stream. Newest connections appear instantly at the top.",
                 Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
                 FontWeight = FontWeights.SemiBold,
                 FontSize = 12,
@@ -570,17 +575,17 @@ namespace PhoneVPNDashboard
 
             Button btnRefreshConn = new Button
             {
-                Content = "Refresh",
+                Content = "Clear List",
                 Padding = new Thickness(14, 4, 14, 4),
                 FontSize = 11,
                 FontWeight = FontWeights.Bold,
-                Background = new SolidColorBrush(Color.FromRgb(14, 165, 233)),
+                Background = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
                 Foreground = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
                 BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand
             };
-            btnRefreshConn.Click += (s, e) => UpdateLiveConnections();
+            btnRefreshConn.Click += (s, e) => { liveConnectionsList.Clear(); seenEndpoints.Clear(); };
             barGrid.Children.Add(btnRefreshConn);
             Grid.SetColumn(btnRefreshConn, 1);
 
@@ -595,7 +600,8 @@ namespace PhoneVPNDashboard
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 13,
                 BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
-                BorderThickness = new Thickness(1)
+                BorderThickness = new Thickness(1),
+                ItemsSource = liveConnectionsList
             };
 
             Style itemStyle = new Style(typeof(ListViewItem));
@@ -606,12 +612,13 @@ namespace PhoneVPNDashboard
             listConnections.ItemContainerStyle = itemStyle;
 
             GridView gridView = new GridView();
-            gridView.Columns.Add(new GridViewColumn { Header = "Application", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 180 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Proto", DisplayMemberBinding = new System.Windows.Data.Binding("Protocol"), Width = 65 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Time", DisplayMemberBinding = new System.Windows.Data.Binding("Time"), Width = 85 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Application", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 160 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Proto", DisplayMemberBinding = new System.Windows.Data.Binding("Protocol"), Width = 60 });
             gridView.Columns.Add(new GridViewColumn { Header = "Remote Target (Destination)", DisplayMemberBinding = new System.Windows.Data.Binding("Destination"), Width = 280 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Local Endpoint", DisplayMemberBinding = new System.Windows.Data.Binding("LocalInterface"), Width = 230 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Tunnel Routing", DisplayMemberBinding = new System.Windows.Data.Binding("Routing"), Width = 210 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Status", DisplayMemberBinding = new System.Windows.Data.Binding("Status"), Width = 95 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Local Endpoint", DisplayMemberBinding = new System.Windows.Data.Binding("LocalInterface"), Width = 210 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Routing", DisplayMemberBinding = new System.Windows.Data.Binding("Routing"), Width = 180 });
+            gridView.Columns.Add(new GridViewColumn { Header = "State", DisplayMemberBinding = new System.Windows.Data.Binding("Status"), Width = 95 });
 
             listConnections.View = gridView;
             g.Children.Add(listConnections);
@@ -1101,9 +1108,7 @@ namespace PhoneVPNDashboard
                 string output = proc.StandardOutput.ReadToEnd();
                 proc.WaitForExit();
 
-                List<AppConnectionItem> items = new List<AppConnectionItem>();
                 string[] lines = output.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
                 string nowTime = DateTime.Now.ToString("HH:mm:ss");
 
                 foreach (string line in lines)
@@ -1118,10 +1123,9 @@ namespace PhoneVPNDashboard
                         string state = parts[3];
                         string pidStr = parts[4];
 
-                        if (!state.Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase)) continue;
-
                         if (remote.StartsWith("0.0.0.0") || remote.StartsWith("127.0.0.1") || remote.StartsWith("::")) continue;
                         if (remote.EndsWith(":0") || local.EndsWith(":0")) continue;
+                        if (state.Equals("LISTENING", StringComparison.OrdinalIgnoreCase)) continue;
 
                         int pid = 0;
                         int.TryParse(pidStr, out pid);
@@ -1142,7 +1146,7 @@ namespace PhoneVPNDashboard
 
                         if (local.StartsWith("172.19."))
                         {
-                            route = "Proxied (TUN)";
+                            route = "Proxied (VLESS)";
                             isProxied = true;
                         }
                         else if (remote.Contains(":1082") || remote.Contains(":2080"))
@@ -1151,24 +1155,31 @@ namespace PhoneVPNDashboard
                             isProxied = true;
                         }
 
-                        items.Add(new AppConnectionItem
+                        string connKey = string.Format("{0}->{1}", procName, remote);
+                        if (!seenEndpoints.Contains(connKey))
                         {
-                            ProcessName = procName,
-                            Protocol = "TCP",
-                            Destination = remote,
-                            LocalInterface = local,
-                            Routing = route,
-                            Status = state
-                        });
+                            seenEndpoints.Add(connKey);
+                            if (seenEndpoints.Count > 200) seenEndpoints.Clear();
 
-                        if (isProxied)
-                        {
-                            string connKey = string.Format("{0}->{1}", procName, remote);
-                            if (!seenConnections.Contains(connKey))
+                            AppConnectionItem item = new AppConnectionItem
                             {
-                                seenConnections.Add(connKey);
-                                if (seenConnections.Count > 150) seenConnections.Clear();
+                                Time = nowTime,
+                                ProcessName = procName,
+                                Protocol = "TCP",
+                                Destination = remote,
+                                LocalInterface = local,
+                                Routing = route,
+                                Status = state
+                            };
 
+                            liveConnectionsList.Insert(0, item);
+                            if (liveConnectionsList.Count > 150)
+                            {
+                                liveConnectionsList.RemoveAt(liveConnectionsList.Count - 1);
+                            }
+
+                            if (isProxied)
+                            {
                                 string logLine = string.Format("[{0}] [TRAFFIC] {1} -> {2} [{3}]\n", nowTime, procName, remote, route);
                                 txtLogTerminal.AppendText(logLine);
                                 if (chkAutoScroll.IsChecked == true)
@@ -1178,11 +1189,6 @@ namespace PhoneVPNDashboard
                             }
                         }
                     }
-                }
-
-                if (listConnections != null)
-                {
-                    listConnections.ItemsSource = items;
                 }
             }
             catch {}
