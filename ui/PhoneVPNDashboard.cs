@@ -79,33 +79,14 @@ namespace PhoneVPNDashboard
 
     public class DashboardWindow : Window
     {
-        [StructLayout(LayoutKind.Sequential)]
-        public struct IO_COUNTERS
-        {
-            public ulong ReadOperationCount;
-            public ulong WriteOperationCount;
-            public ulong OtherOperationCount;
-            public ulong ReadTransferCount;
-            public ulong WriteTransferCount;
-            public ulong OtherTransferCount;
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool GetProcessIoCounters(IntPtr hProcess, out IO_COUNTERS counters);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool CloseHandle(IntPtr hObject);
-
         private static readonly HashSet<string> SystemIgnoreList = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "System", "svchost", "services", "lsass", "wininit", "csrss", "smss",
             "spoolsv", "fontdrvhost", "registry", "idle", "dwm", "taskhostw",
             "phonevpn-xray", "phonevpn-singbox", "android-xray", "android-singbox",
             "msedgewebview2", "runtimebroker", "smartscreen", "searchapp",
-            "searchhost", "startmenuexperiencehost", "backgroundtaskhost"
+            "searchhost", "startmenuexperiencehost", "backgroundtaskhost",
+            "Antigravity", "explorer", "ShellExperienceHost", "RadeonSoftware"
         };
 
         private string activePlatform = "iphone";
@@ -174,8 +155,10 @@ namespace PhoneVPNDashboard
         private double currentDownSpeed = 0;
         private double currentUpSpeed = 0;
 
-        private Dictionary<string, long> appReadBase = new Dictionary<string, long>();
-        private Dictionary<string, long> appWriteBase = new Dictionary<string, long>();
+        private Dictionary<string, long> appTotalRx = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, long> appTotalTx = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private long lastTickRx = 0;
+        private long lastTickTx = 0;
 
         public DashboardWindow()
         {
@@ -1402,111 +1385,130 @@ namespace PhoneVPNDashboard
                     txtLifetimeUp.Text = FormatBytes(lifetimeTx);
                 }
 
-                UpdateAppUsageList(sessionRx + sessionTx);
+                UpdateAppUsageList(sessionRx, sessionTx, currentRx, currentTx);
             }
             catch {}
         }
 
-        private void UpdateAppUsageList(long totalSessionBytes)
+        private void UpdateAppUsageList(long sessionRx, long sessionTx, long currentRx, long currentTx)
         {
             try
             {
+                if (lastTickRx == 0 && currentRx > 0)
+                {
+                    lastTickRx = currentRx;
+                    lastTickTx = currentTx;
+                }
+
+                long deltaRx = (currentRx >= lastTickRx && lastTickRx > 0) ? (currentRx - lastTickRx) : 0;
+                long deltaTx = (currentTx >= lastTickTx && lastTickTx > 0) ? (currentTx - lastTickTx) : 0;
+                lastTickRx = currentRx;
+                lastTickTx = currentTx;
+
                 Dictionary<string, int> appSocketCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                int totalActiveSockets = 0;
+
                 foreach (AppConnectionItem item in liveConnectionsList)
                 {
                     if (item.Routing.Contains("Proxied"))
                     {
+                        if (SystemIgnoreList.Contains(item.ProcessName)) continue;
                         if (!appSocketCounts.ContainsKey(item.ProcessName)) appSocketCounts[item.ProcessName] = 0;
                         appSocketCounts[item.ProcessName]++;
+                        totalActiveSockets++;
                     }
                 }
 
-                Process[] procs = Process.GetProcesses();
-                Dictionary<string, long> currentReadMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-                Dictionary<string, long> currentWriteMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-
-                foreach (Process p in procs)
+                if (deltaRx > 0 || deltaTx > 0)
                 {
-                    IntPtr handle = IntPtr.Zero;
-                    try
+                    if (totalActiveSockets > 0)
                     {
-                        string name = p.ProcessName;
-                        if (SystemIgnoreList.Contains(name)) continue;
-
-                        handle = OpenProcess(0x0400, false, p.Id);
-                        if (handle != IntPtr.Zero)
+                        foreach (KeyValuePair<string, int> kv in appSocketCounts)
                         {
-                            IO_COUNTERS counters;
-                            if (GetProcessIoCounters(handle, out counters))
+                            string app = kv.Key;
+                            double share = (double)kv.Value / totalActiveSockets;
+                            long allocRx = (long)(deltaRx * share);
+                            long allocTx = (long)(deltaTx * share);
+
+                            if (!appTotalRx.ContainsKey(app)) appTotalRx[app] = 0;
+                            if (!appTotalTx.ContainsKey(app)) appTotalTx[app] = 0;
+
+                            appTotalRx[app] += allocRx;
+                            appTotalTx[app] += allocTx;
+                        }
+                    }
+                }
+
+                long sumRecordedRx = 0;
+                foreach (long v in appTotalRx.Values) sumRecordedRx += v;
+                long sumRecordedTx = 0;
+                foreach (long v in appTotalTx.Values) sumRecordedTx += v;
+
+                long gapRx = sessionRx - sumRecordedRx;
+                long gapTx = sessionTx - sumRecordedTx;
+
+                if (gapRx > 0 || gapTx > 0)
+                {
+                    if (totalActiveSockets > 0)
+                    {
+                        foreach (KeyValuePair<string, int> kv in appSocketCounts)
+                        {
+                            string app = kv.Key;
+                            double share = (double)kv.Value / totalActiveSockets;
+                            if (!appTotalRx.ContainsKey(app)) appTotalRx[app] = 0;
+                            if (!appTotalTx.ContainsKey(app)) appTotalTx[app] = 0;
+                            appTotalRx[app] += (long)(gapRx * share);
+                            appTotalTx[app] += (long)(gapTx * share);
+                        }
+                    }
+                    else if (appTotalRx.Count > 0)
+                    {
+                        string topApp = null;
+                        long topVal = -1;
+                        foreach (KeyValuePair<string, long> kv in appTotalRx)
+                        {
+                            if (kv.Value > topVal)
                             {
-                                if (!currentReadMap.ContainsKey(name))
-                                {
-                                    currentReadMap[name] = 0;
-                                    currentWriteMap[name] = 0;
-                                }
-                                currentReadMap[name] += (long)counters.ReadTransferCount;
-                                currentWriteMap[name] += (long)counters.WriteTransferCount;
+                                topVal = kv.Value;
+                                topApp = kv.Key;
                             }
                         }
-                    }
-                    catch {}
-                    finally
-                    {
-                        if (handle != IntPtr.Zero)
+                        if (topApp != null)
                         {
-                            CloseHandle(handle);
+                            appTotalRx[topApp] += gapRx;
+                            appTotalTx[topApp] += gapTx;
                         }
-                        p.Dispose();
                     }
                 }
 
+                HashSet<string> allKnownApps = new HashSet<string>(appTotalRx.Keys, StringComparer.OrdinalIgnoreCase);
+                foreach (string app in appSocketCounts.Keys) allKnownApps.Add(app);
+
                 List<AppUsageItem> usageItems = new List<AppUsageItem>();
-                long sumAppBytes = 0;
+                long totalSessionBytes = sessionRx + sessionTx;
 
-                foreach (KeyValuePair<string, long> kv in currentReadMap)
+                foreach (string app in allKnownApps)
                 {
-                    string app = kv.Key;
-                    long totalRead = kv.Value;
-                    long totalWrite = currentWriteMap.ContainsKey(app) ? currentWriteMap[app] : 0;
-
-                    if (!appReadBase.ContainsKey(app))
-                    {
-                        appReadBase[app] = totalRead;
-                        appWriteBase[app] = totalWrite;
-                    }
-
-                    long usedDown = totalRead >= appReadBase[app] ? (totalRead - appReadBase[app]) : 0;
-                    long usedUp = totalWrite >= appWriteBase[app] ? (totalWrite - appWriteBase[app]) : 0;
-                    long appTotal = usedDown + usedUp;
-
+                    long rx = appTotalRx.ContainsKey(app) ? appTotalRx[app] : 0;
+                    long tx = appTotalTx.ContainsKey(app) ? appTotalTx[app] : 0;
+                    long total = rx + tx;
                     int sockets = appSocketCounts.ContainsKey(app) ? appSocketCounts[app] : 0;
 
-                    if (appTotal > 0 || sockets > 0)
+                    double pct = (totalSessionBytes > 0) ? ((total * 100.0) / totalSessionBytes) : 0.0;
+
+                    usageItems.Add(new AppUsageItem
                     {
-                        sumAppBytes += appTotal;
-                        usageItems.Add(new AppUsageItem
-                        {
-                            ProcessName = app,
-                            TotalBytesRaw = appTotal,
-                            TotalDataFormatted = FormatBytes(appTotal),
-                            DownloadFormatted = FormatBytes(usedDown),
-                            UploadFormatted = FormatBytes(usedUp),
-                            ActiveSockets = sockets > 0 ? string.Format("{0} socket(s)", sockets) : "Idle",
-                            SharePercentage = "0%"
-                        });
-                    }
+                        ProcessName = app,
+                        TotalBytesRaw = total,
+                        TotalDataFormatted = FormatBytes(total),
+                        DownloadFormatted = FormatBytes(rx),
+                        UploadFormatted = FormatBytes(tx),
+                        ActiveSockets = sockets > 0 ? string.Format("{0} socket(s)", sockets) : "Idle",
+                        SharePercentage = string.Format("{0:0.0}%", pct)
+                    });
                 }
 
                 usageItems.Sort((a, b) => b.TotalBytesRaw.CompareTo(a.TotalBytesRaw));
-
-                if (sumAppBytes > 0)
-                {
-                    foreach (AppUsageItem u in usageItems)
-                    {
-                        double pct = (u.TotalBytesRaw * 100.0) / sumAppBytes;
-                        u.SharePercentage = string.Format("{0:0.0}%", pct);
-                    }
-                }
 
                 appUsageList.Clear();
                 foreach (AppUsageItem item in usageItems)
@@ -1533,10 +1535,12 @@ namespace PhoneVPNDashboard
                 IPv4InterfaceStatistics s = tun.GetIPv4Statistics();
                 sessionBaseRx = s.BytesReceived;
                 sessionBaseTx = s.BytesSent;
+                lastTickRx = s.BytesReceived;
+                lastTickTx = s.BytesSent;
             }
 
-            appReadBase.Clear();
-            appWriteBase.Clear();
+            appTotalRx.Clear();
+            appTotalTx.Clear();
             appUsageList.Clear();
             UpdateDataUsageStats();
         }
