@@ -69,9 +69,10 @@ namespace PhoneVPNDashboard
     public class AppUsageItem
     {
         public string ProcessName { get; set; }
-        public string TotalDataFormatted { get; set; }
+        public string SessionTotalFormatted { get; set; }
         public string DownloadFormatted { get; set; }
         public string UploadFormatted { get; set; }
+        public string AllTimeTotalFormatted { get; set; }
         public string SharePercentage { get; set; }
         public string ActiveSockets { get; set; }
         public long TotalBytesRaw { get; set; }
@@ -79,6 +80,26 @@ namespace PhoneVPNDashboard
 
     public class DashboardWindow : Window
     {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IO_COUNTERS
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool GetProcessIoCounters(IntPtr hProcess, out IO_COUNTERS counters);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr hObject);
+
         private static readonly HashSet<string> SystemIgnoreList = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "System", "svchost", "services", "lsass", "wininit", "csrss", "smss",
@@ -157,8 +178,13 @@ namespace PhoneVPNDashboard
 
         private Dictionary<string, long> appTotalRx = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, long> appTotalTx = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, long> appLifetimeBaseRx = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, long> appLifetimeBaseTx = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, long> appPrevIoRead = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, long> appPrevIoWrite = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         private long lastTickRx = 0;
         private long lastTickTx = 0;
+        private int autoSaveCounter = 0;
 
         public DashboardWindow()
         {
@@ -236,6 +262,32 @@ namespace PhoneVPNDashboard
             }
 
             return AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        private void GetAppIo(string appName, out long totalRead, out long totalWrite)
+        {
+            totalRead = 0;
+            totalWrite = 0;
+            try
+            {
+                Process[] procs = Process.GetProcessesByName(appName);
+                foreach (Process p in procs)
+                {
+                    IntPtr h = OpenProcess(0x0400, false, p.Id);
+                    if (h != IntPtr.Zero)
+                    {
+                        IO_COUNTERS c;
+                        if (GetProcessIoCounters(h, out c))
+                        {
+                            totalRead += (long)c.ReadTransferCount;
+                            totalWrite += (long)c.WriteTransferCount;
+                        }
+                        CloseHandle(h);
+                    }
+                    p.Dispose();
+                }
+            }
+            catch {}
         }
 
         private void BuildUi()
@@ -824,12 +876,13 @@ namespace PhoneVPNDashboard
             listAppUsage.ItemContainerStyle = itemStyle;
 
             GridView gridView = new GridView();
-            gridView.Columns.Add(new GridViewColumn { Header = "Application", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 180 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Total Data Used", DisplayMemberBinding = new System.Windows.Data.Binding("TotalDataFormatted"), Width = 160 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Download", DisplayMemberBinding = new System.Windows.Data.Binding("DownloadFormatted"), Width = 150 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Upload", DisplayMemberBinding = new System.Windows.Data.Binding("UploadFormatted"), Width = 150 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Usage Share", DisplayMemberBinding = new System.Windows.Data.Binding("SharePercentage"), Width = 140 });
-            gridView.Columns.Add(new GridViewColumn { Header = "Active Sockets", DisplayMemberBinding = new System.Windows.Data.Binding("ActiveSockets"), Width = 130 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Application", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 155 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Session Total", DisplayMemberBinding = new System.Windows.Data.Binding("SessionTotalFormatted"), Width = 130 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Download", DisplayMemberBinding = new System.Windows.Data.Binding("DownloadFormatted"), Width = 120 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Upload", DisplayMemberBinding = new System.Windows.Data.Binding("UploadFormatted"), Width = 120 });
+            gridView.Columns.Add(new GridViewColumn { Header = "All-Time Total", DisplayMemberBinding = new System.Windows.Data.Binding("AllTimeTotalFormatted"), Width = 135 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Usage Share", DisplayMemberBinding = new System.Windows.Data.Binding("SharePercentage"), Width = 105 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Active Sockets", DisplayMemberBinding = new System.Windows.Data.Binding("ActiveSockets"), Width = 115 });
 
             listAppUsage.View = gridView;
             g.Children.Add(listAppUsage);
@@ -1419,6 +1472,37 @@ namespace PhoneVPNDashboard
                     }
                 }
 
+                Dictionary<string, long> currentReadDeltas = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, long> currentWriteDeltas = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                long sumReadDelta = 0;
+                long sumWriteDelta = 0;
+
+                foreach (string app in appSocketCounts.Keys)
+                {
+                    long curRead, curWrite;
+                    GetAppIo(app, out curRead, out curWrite);
+
+                    long rDelta = 0;
+                    long wDelta = 0;
+
+                    if (appPrevIoRead.ContainsKey(app) && curRead >= appPrevIoRead[app])
+                    {
+                        rDelta = curRead - appPrevIoRead[app];
+                    }
+                    if (appPrevIoWrite.ContainsKey(app) && curWrite >= appPrevIoWrite[app])
+                    {
+                        wDelta = curWrite - appPrevIoWrite[app];
+                    }
+
+                    appPrevIoRead[app] = curRead;
+                    appPrevIoWrite[app] = curWrite;
+
+                    currentReadDeltas[app] = rDelta;
+                    currentWriteDeltas[app] = wDelta;
+                    sumReadDelta += rDelta;
+                    sumWriteDelta += wDelta;
+                }
+
                 if (deltaRx > 0 || deltaTx > 0)
                 {
                     if (totalActiveSockets > 0)
@@ -1426,9 +1510,17 @@ namespace PhoneVPNDashboard
                         foreach (KeyValuePair<string, int> kv in appSocketCounts)
                         {
                             string app = kv.Key;
-                            double share = (double)kv.Value / totalActiveSockets;
-                            long allocRx = (long)(deltaRx * share);
-                            long allocTx = (long)(deltaTx * share);
+
+                            double downShare = (sumReadDelta > 0 && currentReadDeltas.ContainsKey(app))
+                                ? ((double)currentReadDeltas[app] / sumReadDelta)
+                                : ((double)kv.Value / totalActiveSockets);
+
+                            double upShare = (sumWriteDelta > 0 && currentWriteDeltas.ContainsKey(app))
+                                ? ((double)currentWriteDeltas[app] / sumWriteDelta)
+                                : ((double)kv.Value / totalActiveSockets);
+
+                            long allocRx = (long)(deltaRx * downShare);
+                            long allocTx = (long)(deltaTx * upShare);
 
                             if (!appTotalRx.ContainsKey(app)) appTotalRx[app] = 0;
                             if (!appTotalTx.ContainsKey(app)) appTotalTx[app] = 0;
@@ -1481,7 +1573,15 @@ namespace PhoneVPNDashboard
                     }
                 }
 
-                HashSet<string> allKnownApps = new HashSet<string>(appTotalRx.Keys, StringComparer.OrdinalIgnoreCase);
+                autoSaveCounter++;
+                if (autoSaveCounter >= 10)
+                {
+                    autoSaveCounter = 0;
+                    SaveLifetimeStats();
+                }
+
+                HashSet<string> allKnownApps = new HashSet<string>(appLifetimeBaseRx.Keys, StringComparer.OrdinalIgnoreCase);
+                foreach (string app in appTotalRx.Keys) allKnownApps.Add(app);
                 foreach (string app in appSocketCounts.Keys) allKnownApps.Add(app);
 
                 List<AppUsageItem> usageItems = new List<AppUsageItem>();
@@ -1491,21 +1591,29 @@ namespace PhoneVPNDashboard
                 {
                     long rx = appTotalRx.ContainsKey(app) ? appTotalRx[app] : 0;
                     long tx = appTotalTx.ContainsKey(app) ? appTotalTx[app] : 0;
-                    long total = rx + tx;
+                    long sessionTotal = rx + tx;
+
+                    long baseRx = appLifetimeBaseRx.ContainsKey(app) ? appLifetimeBaseRx[app] : 0;
+                    long baseTx = appLifetimeBaseTx.ContainsKey(app) ? appLifetimeBaseTx[app] : 0;
+                    long allTimeTotal = (baseRx + rx) + (baseTx + tx);
+
                     int sockets = appSocketCounts.ContainsKey(app) ? appSocketCounts[app] : 0;
+                    double pct = (totalSessionBytes > 0) ? ((sessionTotal * 100.0) / totalSessionBytes) : 0.0;
 
-                    double pct = (totalSessionBytes > 0) ? ((total * 100.0) / totalSessionBytes) : 0.0;
-
-                    usageItems.Add(new AppUsageItem
+                    if (sessionTotal > 0 || allTimeTotal > 0 || sockets > 0)
                     {
-                        ProcessName = app,
-                        TotalBytesRaw = total,
-                        TotalDataFormatted = FormatBytes(total),
-                        DownloadFormatted = FormatBytes(rx),
-                        UploadFormatted = FormatBytes(tx),
-                        ActiveSockets = sockets > 0 ? string.Format("{0} socket(s)", sockets) : "Idle",
-                        SharePercentage = string.Format("{0:0.0}%", pct)
-                    });
+                        usageItems.Add(new AppUsageItem
+                        {
+                            ProcessName = app,
+                            SessionTotalFormatted = FormatBytes(sessionTotal),
+                            DownloadFormatted = FormatBytes(rx),
+                            UploadFormatted = FormatBytes(tx),
+                            AllTimeTotalFormatted = FormatBytes(allTimeTotal),
+                            ActiveSockets = sockets > 0 ? string.Format("{0} socket(s)", sockets) : "Idle",
+                            SharePercentage = string.Format("{0:0.0}%", pct),
+                            TotalBytesRaw = sessionTotal > 0 ? sessionTotal : allTimeTotal
+                        });
+                    }
                 }
 
                 usageItems.Sort((a, b) => b.TotalBytesRaw.CompareTo(a.TotalBytesRaw));
@@ -1529,6 +1637,8 @@ namespace PhoneVPNDashboard
 
         private void ResetSessionStats()
         {
+            SaveLifetimeStats();
+
             NetworkInterface tun = FindTunAdapter();
             if (tun != null)
             {
@@ -1539,8 +1649,18 @@ namespace PhoneVPNDashboard
                 lastTickTx = s.BytesSent;
             }
 
+            foreach (string app in appTotalRx.Keys)
+            {
+                long baseRx = appLifetimeBaseRx.ContainsKey(app) ? appLifetimeBaseRx[app] : 0;
+                long baseTx = appLifetimeBaseTx.ContainsKey(app) ? appLifetimeBaseTx[app] : 0;
+                appLifetimeBaseRx[app] = baseRx + appTotalRx[app];
+                appLifetimeBaseTx[app] = baseTx + appTotalTx[app];
+            }
+
             appTotalRx.Clear();
             appTotalTx.Clear();
+            appPrevIoRead.Clear();
+            appPrevIoWrite.Clear();
             appUsageList.Clear();
             UpdateDataUsageStats();
         }
@@ -1553,16 +1673,50 @@ namespace PhoneVPNDashboard
                 if (File.Exists(statsFile))
                 {
                     string json = File.ReadAllText(statsFile);
-                    string[] lines = json.Split(new char[] { ',', '{', '}', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                    foreach (string l in lines)
+                    string[] lines = json.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (string rawLine in lines)
                     {
-                        if (l.Contains("\"lifetimeRx\""))
+                        string line = rawLine.Trim();
+                        if (line.Contains("\"lifetimeRx\":"))
                         {
-                            long.TryParse(l.Split(':')[1].Trim(), out lifetimeBaseRx);
+                            string val = line.Split(':')[1].Trim().TrimEnd(',');
+                            long.TryParse(val, out lifetimeBaseRx);
                         }
-                        if (l.Contains("\"lifetimeTx\""))
+                        else if (line.Contains("\"lifetimeTx\":"))
                         {
-                            long.TryParse(l.Split(':')[1].Trim(), out lifetimeBaseTx);
+                            string val = line.Split(':')[1].Trim().TrimEnd(',');
+                            long.TryParse(val, out lifetimeBaseTx);
+                        }
+                        else if (line.Contains("\"rx\":") && line.Contains("\"tx\":"))
+                        {
+                            int colonIdx = line.IndexOf(':');
+                            if (colonIdx > 0)
+                            {
+                                string appKey = line.Substring(0, colonIdx).Trim().Trim('"');
+                                string rest = line.Substring(colonIdx + 1);
+                                int rxIdx = rest.IndexOf("\"rx\":");
+                                int txIdx = rest.IndexOf("\"tx\":");
+                                if (rxIdx >= 0 && txIdx >= 0)
+                                {
+                                    string rxSub = rest.Substring(rxIdx + 5);
+                                    int commaIdx = rxSub.IndexOfAny(new char[] { ',', '}' });
+                                    if (commaIdx > 0) rxSub = rxSub.Substring(0, commaIdx).Trim();
+
+                                    string txSub = rest.Substring(txIdx + 5);
+                                    int endIdx = txSub.IndexOfAny(new char[] { ',', '}' });
+                                    if (endIdx > 0) txSub = txSub.Substring(0, endIdx).Trim();
+
+                                    long rVal, tVal;
+                                    long.TryParse(rxSub, out rVal);
+                                    long.TryParse(txSub, out tVal);
+
+                                    if (!string.IsNullOrEmpty(appKey))
+                                    {
+                                        appLifetimeBaseRx[appKey] = rVal;
+                                        appLifetimeBaseTx[appKey] = tVal;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1585,8 +1739,36 @@ namespace PhoneVPNDashboard
                 long totalRx = lifetimeBaseRx + sessionRx;
                 long totalTx = lifetimeBaseTx + sessionTx;
 
-                string json = string.Format("{{\n  \"lifetimeRx\": {0},\n  \"lifetimeTx\": {1}\n}}\n", totalRx, totalTx);
-                File.WriteAllText(statsFile, json);
+                HashSet<string> allKnownApps = new HashSet<string>(appLifetimeBaseRx.Keys, StringComparer.OrdinalIgnoreCase);
+                foreach (string app in appTotalRx.Keys) allKnownApps.Add(app);
+
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("{");
+                sb.AppendFormat("  \"lifetimeRx\": {0},\n", totalRx);
+                sb.AppendFormat("  \"lifetimeTx\": {0},\n", totalTx);
+                sb.AppendLine("  \"apps\": {");
+
+                int idx = 0;
+                foreach (string app in allKnownApps)
+                {
+                    long baseRx = appLifetimeBaseRx.ContainsKey(app) ? appLifetimeBaseRx[app] : 0;
+                    long baseTx = appLifetimeBaseTx.ContainsKey(app) ? appLifetimeBaseTx[app] : 0;
+                    long curRx = appTotalRx.ContainsKey(app) ? appTotalRx[app] : 0;
+                    long curTx = appTotalTx.ContainsKey(app) ? appTotalTx[app] : 0;
+                    long appAllRx = baseRx + curRx;
+                    long appAllTx = baseTx + curTx;
+
+                    if (appAllRx > 0 || appAllTx > 0)
+                    {
+                        if (idx > 0) sb.AppendLine(",");
+                        sb.AppendFormat("    \"{0}\": {{ \"rx\": {1}, \"tx\": {2} }}", app, appAllRx, appAllTx);
+                        idx++;
+                    }
+                }
+                sb.AppendLine("\n  }");
+                sb.AppendLine("}");
+
+                File.WriteAllText(statsFile, sb.ToString());
             }
             catch {}
         }
