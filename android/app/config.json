@@ -1,0 +1,37 @@
+{
+  "log": { "level": "warn", "timestamp": true, "output": "sing-box.log" },
+  "dns": {
+    "servers": [
+      { "type": "tcp", "tag": "remote", "server": "1.1.1.1", "detour": "xray" }
+    ],
+    "final": "remote",
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "android-tun",
+      "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+      "mtu": 9000,
+      "auto_route": true,
+      "strict_route": true,
+      "stack": "mixed"
+    }
+  ],
+  "outbounds": [
+    { "type": "socks", "tag": "xray", "server": "127.0.0.1", "server_port": 17880, "version": "5" },
+    { "type": "direct", "tag": "direct" }
+  ],
+  "route": {
+    "rules": [
+      { "process_name": ["android-xray.exe"], "outbound": "direct" },
+      { "action": "sniff" },
+      { "protocol": "dns", "action": "hijack-dns" },
+      { "ip_is_private": true, "outbound": "direct" }
+    ],
+    "final": "xray",
+    "auto_detect_interface": true,
+    "default_domain_resolver": "remote"
+  }
+}
