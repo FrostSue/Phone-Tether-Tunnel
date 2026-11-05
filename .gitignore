@@ -14,6 +14,7 @@ vless.pin
 *.pid
 xray-runtime.json
 android/app/xray/config.json
+stats.json
 
 # Windows / editor noise
 Thumbs.db
