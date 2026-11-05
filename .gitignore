@@ -1,0 +1,24 @@
+# Downloaded program files (installers fetch and verify them)
+*.exe
+*.dll
+*.zip
+android/cores/
+iphone/cores/
+
+# Secrets - never commit your server link or pinned certificate
+vless.txt
+vless.pin
+
+# Runtime files written by the watchers
+*.log
+*.pid
+xray-runtime.json
+android/app/xray/config.json
+
+# Windows / editor noise
+Thumbs.db
+desktop.ini
+*.lnk
+.vscode/
+repo-url.txt
+tools/
