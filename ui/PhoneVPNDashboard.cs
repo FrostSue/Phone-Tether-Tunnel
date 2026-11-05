@@ -4,6 +4,8 @@ using System.Text;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
+using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -33,8 +35,33 @@ namespace PhoneVPNDashboard
         public string Status { get; set; }
     }
 
+    public class AppUsageItem
+    {
+        public string ProcessName { get; set; }
+        public string TotalDataFormatted { get; set; }
+        public string DownloadFormatted { get; set; }
+        public string UploadFormatted { get; set; }
+        public string SharePercentage { get; set; }
+        public string ActiveSockets { get; set; }
+        public long TotalBytesRaw { get; set; }
+    }
+
     public class DashboardWindow : Window
     {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IO_COUNTERS
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool GetProcessIoCounters(IntPtr hProcess, out IO_COUNTERS counters);
+
         private static readonly HashSet<string> SystemIgnoreList = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "System", "svchost", "services", "lsass", "wininit", "csrss", "smss",
@@ -48,8 +75,10 @@ namespace PhoneVPNDashboard
         private string activeFolder = "";
         private long lastWatcherLogPos = 0;
         private long lastSingboxLogPos = 0;
+
         private DispatcherTimer refreshTimer;
         private DispatcherTimer connectionsTimer;
+        private DispatcherTimer statsTimer;
 
         private Border statusIndicatorDot;
         private TextBlock txtStatusBadge;
@@ -65,15 +94,26 @@ namespace PhoneVPNDashboard
         private Button btnSwitchAndroid;
 
         private Button navLiveFeedBtn;
+        private Button navUsageBtn;
         private Button navLogsBtn;
         private Button navSettingsBtn;
 
         private Grid pageLiveFeed;
+        private Grid pageUsage;
         private Grid pageLogs;
         private Grid pageSettings;
 
         private ListView listConnections;
         private ObservableCollection<AppConnectionItem> liveConnectionsList = new ObservableCollection<AppConnectionItem>();
+
+        private ListView listAppUsage;
+        private ObservableCollection<AppUsageItem> appUsageList = new ObservableCollection<AppUsageItem>();
+
+        private TextBlock txtSessionDown;
+        private TextBlock txtSessionUp;
+        private TextBlock txtLifetimeDown;
+        private TextBlock txtLifetimeUp;
+
         private TextBox txtLogTerminal;
         private ComboBox cmbLogSource;
         private CheckBox chkAutoScroll;
@@ -87,21 +127,36 @@ namespace PhoneVPNDashboard
         private HashSet<string> seenEndpoints = new HashSet<string>();
         private Dictionary<int, string> procNameCache = new Dictionary<int, string>();
 
+        private long sessionBaseRx = 0;
+        private long sessionBaseTx = 0;
+        private long lifetimeBaseRx = 0;
+        private long lifetimeBaseTx = 0;
+        private long lastSpeedRx = 0;
+        private long lastSpeedTx = 0;
+        private DateTime lastSpeedTime = DateTime.Now;
+        private double currentDownSpeed = 0;
+        private double currentUpSpeed = 0;
+
+        private Dictionary<string, long> appReadBase = new Dictionary<string, long>();
+        private Dictionary<string, long> appWriteBase = new Dictionary<string, long>();
+
         public DashboardWindow()
         {
             activeFolder = AutoDetectActiveFolder();
 
             Title = "Phone-Tether-Tunnel Dashboard";
-            Width = 1120;
-            Height = 780;
-            MinWidth = 920;
-            MinHeight = 650;
+            Width = 1140;
+            Height = 800;
+            MinWidth = 940;
+            MinHeight = 660;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
 
             TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
             TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
             UseLayoutRounding = true;
+
+            LoadLifetimeStats();
 
             BuildUi();
 
@@ -115,10 +170,18 @@ namespace PhoneVPNDashboard
             connectionsTimer.Tick += ConnectionsTimer_Tick;
             connectionsTimer.Start();
 
+            statsTimer = new DispatcherTimer();
+            statsTimer.Interval = TimeSpan.FromSeconds(1);
+            statsTimer.Tick += StatsTimer_Tick;
+            statsTimer.Start();
+
             LoadInitialSettings();
             ReadLogs(true);
             UpdateProcessStatus();
             UpdateLiveConnections();
+            UpdateDataUsageStats();
+
+            Closing += DashboardWindow_Closing;
         }
 
         private string AutoDetectActiveFolder()
@@ -345,6 +408,10 @@ namespace PhoneVPNDashboard
             navLiveFeedBtn.Click += (s, e) => SwitchTab("livefeed");
             navBar.Children.Add(navLiveFeedBtn);
 
+            navUsageBtn = CreateNavTabButton("Data Usage", false);
+            navUsageBtn.Click += (s, e) => SwitchTab("usage");
+            navBar.Children.Add(navUsageBtn);
+
             navLogsBtn = CreateNavTabButton("Logs", false);
             navLogsBtn.Click += (s, e) => SwitchTab("logs");
             navBar.Children.Add(navLogsBtn);
@@ -359,13 +426,16 @@ namespace PhoneVPNDashboard
             Grid contentArea = new Grid { Margin = new Thickness(24, 4, 24, 18) };
 
             pageLiveFeed = CreateLiveFeedPage();
+            pageUsage = CreateUsagePage();
             pageLogs = CreateLogsPage();
             pageSettings = CreateSettingsPage();
 
             contentArea.Children.Add(pageLiveFeed);
+            contentArea.Children.Add(pageUsage);
             contentArea.Children.Add(pageLogs);
             contentArea.Children.Add(pageSettings);
 
+            pageUsage.Visibility = Visibility.Collapsed;
             pageLogs.Visibility = Visibility.Collapsed;
             pageSettings.Visibility = Visibility.Collapsed;
 
@@ -380,7 +450,7 @@ namespace PhoneVPNDashboard
             Button btn = new Button
             {
                 Content = text,
-                Padding = new Thickness(22, 9, 22, 9),
+                Padding = new Thickness(20, 9, 20, 9),
                 FontSize = 13,
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(0, 0, 8, 0),
@@ -410,6 +480,10 @@ namespace PhoneVPNDashboard
             navLiveFeedBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
             navLiveFeedBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
 
+            navUsageBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
+            navUsageBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+            navUsageBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+
             navLogsBtn.Background = new SolidColorBrush(Color.FromRgb(15, 23, 42));
             navLogsBtn.Foreground = new SolidColorBrush(Color.FromRgb(148, 163, 184));
             navLogsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
@@ -419,6 +493,7 @@ namespace PhoneVPNDashboard
             navSettingsBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
 
             pageLiveFeed.Visibility = Visibility.Collapsed;
+            pageUsage.Visibility = Visibility.Collapsed;
             pageLogs.Visibility = Visibility.Collapsed;
             pageSettings.Visibility = Visibility.Collapsed;
 
@@ -429,6 +504,14 @@ namespace PhoneVPNDashboard
                 navLiveFeedBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
                 pageLiveFeed.Visibility = Visibility.Visible;
                 UpdateLiveConnections();
+            }
+            else if (tabName == "usage")
+            {
+                navUsageBtn.Background = new SolidColorBrush(Color.FromRgb(30, 41, 59));
+                navUsageBtn.Foreground = Brushes.White;
+                navUsageBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
+                pageUsage.Visibility = Visibility.Visible;
+                UpdateDataUsageStats();
             }
             else if (tabName == "logs")
             {
@@ -623,6 +706,114 @@ namespace PhoneVPNDashboard
             listConnections.View = gridView;
             g.Children.Add(listConnections);
             Grid.SetRow(listConnections, 1);
+
+            return g;
+        }
+
+        private Grid CreateUsagePage()
+        {
+            Grid g = new Grid();
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(106) });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            Grid usageKpi = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            usageKpi.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            usageKpi.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            usageKpi.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            usageKpi.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            usageKpi.Children.Add(CreateKpiCard("SESSION DOWNLOAD", out txtSessionDown, 0, Color.FromRgb(34, 197, 94), "0.0 MB (0 B/s)"));
+            usageKpi.Children.Add(CreateKpiCard("SESSION UPLOAD", out txtSessionUp, 1, Color.FromRgb(56, 189, 248), "0.0 MB (0 B/s)"));
+            usageKpi.Children.Add(CreateKpiCard("TOTAL DOWNLOAD (ALL TIME)", out txtLifetimeDown, 2, Color.FromRgb(250, 204, 21), "0.0 GB"));
+            usageKpi.Children.Add(CreateKpiCard("TOTAL UPLOAD (ALL TIME)", out txtLifetimeUp, 3, Color.FromRgb(192, 132, 252), "0.0 GB"));
+
+            g.Children.Add(usageKpi);
+            Grid.SetRow(usageKpi, 0);
+
+            Border topBar = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
+                BorderThickness = new Thickness(1, 1, 1, 0),
+                Padding = new Thickness(16, 10, 16, 10)
+            };
+
+            Grid barGrid = new Grid();
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            StackPanel infoPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            TextBlock txtUsageIcon = new TextBlock
+            {
+                Text = "● PER-APPLICATION DATA CONSUMPTION: ",
+                Foreground = new SolidColorBrush(Color.FromRgb(56, 189, 248)),
+                FontWeight = FontWeights.ExtraBold,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            TextBlock txtUsageDesc = new TextBlock
+            {
+                Text = "Shows how much data each application downloaded and uploaded",
+                Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            infoPanel.Children.Add(txtUsageIcon);
+            infoPanel.Children.Add(txtUsageDesc);
+            barGrid.Children.Add(infoPanel);
+            Grid.SetColumn(infoPanel, 0);
+
+            Button btnResetSession = new Button
+            {
+                Content = "Reset Session",
+                Padding = new Thickness(14, 4, 14, 4),
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Background = new SolidColorBrush(Color.FromRgb(51, 65, 85)),
+                Foreground = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                BorderThickness = new Thickness(1),
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            btnResetSession.Click += (s, e) => ResetSessionStats();
+            barGrid.Children.Add(btnResetSession);
+            Grid.SetColumn(btnResetSession, 1);
+
+            topBar.Child = barGrid;
+            g.Children.Add(topBar);
+            Grid.SetRow(topBar, 1);
+
+            listAppUsage = new ListView
+            {
+                Background = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
+                Foreground = Brushes.White,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 13,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
+                BorderThickness = new Thickness(1),
+                ItemsSource = appUsageList
+            };
+
+            Style itemStyle = new Style(typeof(ListViewItem));
+            itemStyle.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+            itemStyle.Setters.Add(new Setter(Control.FontSizeProperty, 12.0));
+            itemStyle.Setters.Add(new Setter(Control.FontFamilyProperty, new FontFamily("Consolas")));
+            itemStyle.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(15, 23, 42))));
+            listAppUsage.ItemContainerStyle = itemStyle;
+
+            GridView gridView = new GridView();
+            gridView.Columns.Add(new GridViewColumn { Header = "Application", DisplayMemberBinding = new System.Windows.Data.Binding("ProcessName"), Width = 180 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Total Data Used", DisplayMemberBinding = new System.Windows.Data.Binding("TotalDataFormatted"), Width = 160 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Download", DisplayMemberBinding = new System.Windows.Data.Binding("DownloadFormatted"), Width = 150 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Upload", DisplayMemberBinding = new System.Windows.Data.Binding("UploadFormatted"), Width = 150 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Usage Share", DisplayMemberBinding = new System.Windows.Data.Binding("SharePercentage"), Width = 140 });
+            gridView.Columns.Add(new GridViewColumn { Header = "Active Sockets", DisplayMemberBinding = new System.Windows.Data.Binding("ActiveSockets"), Width = 130 });
+
+            listAppUsage.View = gridView;
+            g.Children.Add(listAppUsage);
+            Grid.SetRow(listAppUsage, 2);
 
             return g;
         }
@@ -1089,6 +1280,266 @@ namespace PhoneVPNDashboard
         private void ConnectionsTimer_Tick(object sender, EventArgs e)
         {
             UpdateLiveConnections();
+        }
+
+        private void StatsTimer_Tick(object sender, EventArgs e)
+        {
+            UpdateDataUsageStats();
+        }
+
+        private NetworkInterface FindTunAdapter()
+        {
+            try
+            {
+                foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    string name = ni.Name.ToLower();
+                    string desc = ni.Description.ToLower();
+                    if (name.Contains("phonevpn-tun") || name.Contains("android-tun") || desc.Contains("sing-tun") || desc.Contains("wintun"))
+                    {
+                        return ni;
+                    }
+                }
+            }
+            catch {}
+            return null;
+        }
+
+        private void UpdateDataUsageStats()
+        {
+            try
+            {
+                NetworkInterface tun = FindTunAdapter();
+                long currentRx = 0;
+                long currentTx = 0;
+
+                if (tun != null)
+                {
+                    IPv4InterfaceStatistics s = tun.GetIPv4Statistics();
+                    currentRx = s.BytesReceived;
+                    currentTx = s.BytesSent;
+
+                    if (sessionBaseRx == 0 && currentRx > 0)
+                    {
+                        sessionBaseRx = currentRx;
+                        sessionBaseTx = currentTx;
+                    }
+
+                    double elapsed = (DateTime.Now - lastSpeedTime).TotalSeconds;
+                    if (elapsed >= 0.9)
+                    {
+                        if (lastSpeedRx > 0 && currentRx >= lastSpeedRx)
+                        {
+                            currentDownSpeed = (currentRx - lastSpeedRx) / elapsed;
+                        }
+                        if (lastSpeedTx > 0 && currentTx >= lastSpeedTx)
+                        {
+                            currentUpSpeed = (currentTx - lastSpeedTx) / elapsed;
+                        }
+                        lastSpeedRx = currentRx;
+                        lastSpeedTx = currentTx;
+                        lastSpeedTime = DateTime.Now;
+                    }
+                }
+
+                long sessionRx = (currentRx >= sessionBaseRx && sessionBaseRx > 0) ? (currentRx - sessionBaseRx) : 0;
+                long sessionTx = (currentTx >= sessionBaseTx && sessionBaseTx > 0) ? (currentTx - sessionBaseTx) : 0;
+
+                long lifetimeRx = lifetimeBaseRx + sessionRx;
+                long lifetimeTx = lifetimeBaseTx + sessionTx;
+
+                if (txtSessionDown != null)
+                {
+                    txtSessionDown.Text = string.Format("{0} ({1}/s)", FormatBytes(sessionRx), FormatBytes((long)currentDownSpeed));
+                }
+                if (txtSessionUp != null)
+                {
+                    txtSessionUp.Text = string.Format("{0} ({1}/s)", FormatBytes(sessionTx), FormatBytes((long)currentUpSpeed));
+                }
+                if (txtLifetimeDown != null)
+                {
+                    txtLifetimeDown.Text = FormatBytes(lifetimeRx);
+                }
+                if (txtLifetimeUp != null)
+                {
+                    txtLifetimeUp.Text = FormatBytes(lifetimeTx);
+                }
+
+                UpdateAppUsageList(sessionRx + sessionTx);
+            }
+            catch {}
+        }
+
+        private void UpdateAppUsageList(long totalSessionBytes)
+        {
+            try
+            {
+                Dictionary<string, int> appSocketCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (AppConnectionItem item in liveConnectionsList)
+                {
+                    if (item.Routing.Contains("Proxied"))
+                    {
+                        if (!appSocketCounts.ContainsKey(item.ProcessName)) appSocketCounts[item.ProcessName] = 0;
+                        appSocketCounts[item.ProcessName]++;
+                    }
+                }
+
+                Process[] procs = Process.GetProcesses();
+                Dictionary<string, long> currentReadMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, long> currentWriteMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (Process p in procs)
+                {
+                    try
+                    {
+                        string name = p.ProcessName;
+                        if (SystemIgnoreList.Contains(name)) continue;
+
+                        IO_COUNTERS counters;
+                        if (GetProcessIoCounters(p.Handle, out counters))
+                        {
+                            if (!currentReadMap.ContainsKey(name))
+                            {
+                                currentReadMap[name] = 0;
+                                currentWriteMap[name] = 0;
+                            }
+                            currentReadMap[name] += (long)counters.ReadTransferCount;
+                            currentWriteMap[name] += (long)counters.WriteTransferCount;
+                        }
+                    }
+                    catch {}
+                }
+
+                List<AppUsageItem> usageItems = new List<AppUsageItem>();
+                long sumAppBytes = 0;
+
+                foreach (KeyValuePair<string, long> kv in currentReadMap)
+                {
+                    string app = kv.Key;
+                    long totalRead = kv.Value;
+                    long totalWrite = currentWriteMap.ContainsKey(app) ? currentWriteMap[app] : 0;
+
+                    if (!appReadBase.ContainsKey(app))
+                    {
+                        appReadBase[app] = totalRead;
+                        appWriteBase[app] = totalWrite;
+                    }
+
+                    long usedDown = totalRead >= appReadBase[app] ? (totalRead - appReadBase[app]) : 0;
+                    long usedUp = totalWrite >= appWriteBase[app] ? (totalWrite - appWriteBase[app]) : 0;
+                    long appTotal = usedDown + usedUp;
+
+                    int sockets = appSocketCounts.ContainsKey(app) ? appSocketCounts[app] : 0;
+
+                    if (appTotal > 0 || sockets > 0)
+                    {
+                        sumAppBytes += appTotal;
+                        usageItems.Add(new AppUsageItem
+                        {
+                            ProcessName = app,
+                            TotalBytesRaw = appTotal,
+                            TotalDataFormatted = FormatBytes(appTotal),
+                            DownloadFormatted = FormatBytes(usedDown),
+                            UploadFormatted = FormatBytes(usedUp),
+                            ActiveSockets = sockets > 0 ? string.Format("{0} socket(s)", sockets) : "Idle",
+                            SharePercentage = "0%"
+                        });
+                    }
+                }
+
+                usageItems.Sort((a, b) => b.TotalBytesRaw.CompareTo(a.TotalBytesRaw));
+
+                if (sumAppBytes > 0)
+                {
+                    foreach (AppUsageItem u in usageItems)
+                    {
+                        double pct = (u.TotalBytesRaw * 100.0) / sumAppBytes;
+                        u.SharePercentage = string.Format("{0:0.0}%", pct);
+                    }
+                }
+
+                appUsageList.Clear();
+                foreach (AppUsageItem item in usageItems)
+                {
+                    appUsageList.Add(item);
+                }
+            }
+            catch {}
+        }
+
+        private string FormatBytes(long bytes)
+        {
+            if (bytes < 1024) return string.Format("{0} B", bytes);
+            if (bytes < 1024 * 1024) return string.Format("{0:0.0} KB", bytes / 1024.0);
+            if (bytes < 1024 * 1024 * 1024) return string.Format("{0:0.0} MB", bytes / (1024.0 * 1024.0));
+            return string.Format("{0:0.00} GB", bytes / (1024.0 * 1024.0 * 1024.0));
+        }
+
+        private void ResetSessionStats()
+        {
+            NetworkInterface tun = FindTunAdapter();
+            if (tun != null)
+            {
+                IPv4InterfaceStatistics s = tun.GetIPv4Statistics();
+                sessionBaseRx = s.BytesReceived;
+                sessionBaseTx = s.BytesSent;
+            }
+
+            appReadBase.Clear();
+            appWriteBase.Clear();
+            appUsageList.Clear();
+            UpdateDataUsageStats();
+        }
+
+        private void LoadLifetimeStats()
+        {
+            try
+            {
+                string statsFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "stats.json");
+                if (File.Exists(statsFile))
+                {
+                    string json = File.ReadAllText(statsFile);
+                    string[] lines = json.Split(new char[] { ',', '{', '}', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (string l in lines)
+                    {
+                        if (l.Contains("\"lifetimeRx\""))
+                        {
+                            long.TryParse(l.Split(':')[1].Trim(), out lifetimeBaseRx);
+                        }
+                        if (l.Contains("\"lifetimeTx\""))
+                        {
+                            long.TryParse(l.Split(':')[1].Trim(), out lifetimeBaseTx);
+                        }
+                    }
+                }
+            }
+            catch {}
+        }
+
+        private void SaveLifetimeStats()
+        {
+            try
+            {
+                string statsFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "stats.json");
+                NetworkInterface tun = FindTunAdapter();
+                long currentRx = tun != null ? tun.GetIPv4Statistics().BytesReceived : 0;
+                long currentTx = tun != null ? tun.GetIPv4Statistics().BytesSent : 0;
+
+                long sessionRx = (currentRx >= sessionBaseRx && sessionBaseRx > 0) ? (currentRx - sessionBaseRx) : 0;
+                long sessionTx = (currentTx >= sessionBaseTx && sessionBaseTx > 0) ? (currentTx - sessionBaseTx) : 0;
+
+                long totalRx = lifetimeBaseRx + sessionRx;
+                long totalTx = lifetimeBaseTx + sessionTx;
+
+                string json = string.Format("{{\n  \"lifetimeRx\": {0},\n  \"lifetimeTx\": {1}\n}}\n", totalRx, totalTx);
+                File.WriteAllText(statsFile, json);
+            }
+            catch {}
+        }
+
+        private void DashboardWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            SaveLifetimeStats();
         }
 
         private void UpdateLiveConnections()
