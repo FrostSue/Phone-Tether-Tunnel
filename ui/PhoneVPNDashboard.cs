@@ -18,9 +18,40 @@ namespace PhoneVPNDashboard
         [STAThread]
         public static void Main()
         {
-            Program app = new Program();
-            DashboardWindow win = new DashboardWindow();
-            app.Run(win);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                try
+                {
+                    string p = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log");
+                    File.WriteAllText(p, e.ExceptionObject != null ? e.ExceptionObject.ToString() : "Unknown exception");
+                }
+                catch {}
+            };
+
+            try
+            {
+                Program app = new Program();
+                app.DispatcherUnhandledException += (s, e) =>
+                {
+                    try
+                    {
+                        string p = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log");
+                        File.WriteAllText(p, e.Exception != null ? e.Exception.ToString() : "Unknown dispatcher exception");
+                    }
+                    catch {}
+                };
+                DashboardWindow win = new DashboardWindow();
+                app.Run(win);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    string p = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log");
+                    File.WriteAllText(p, ex.ToString());
+                }
+                catch {}
+            }
         }
     }
 
@@ -61,6 +92,12 @@ namespace PhoneVPNDashboard
 
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool GetProcessIoCounters(IntPtr hProcess, out IO_COUNTERS counters);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr hObject);
 
         private static readonly HashSet<string> SystemIgnoreList = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -1390,24 +1427,37 @@ namespace PhoneVPNDashboard
 
                 foreach (Process p in procs)
                 {
+                    IntPtr handle = IntPtr.Zero;
                     try
                     {
                         string name = p.ProcessName;
                         if (SystemIgnoreList.Contains(name)) continue;
 
-                        IO_COUNTERS counters;
-                        if (GetProcessIoCounters(p.Handle, out counters))
+                        handle = OpenProcess(0x0400, false, p.Id);
+                        if (handle != IntPtr.Zero)
                         {
-                            if (!currentReadMap.ContainsKey(name))
+                            IO_COUNTERS counters;
+                            if (GetProcessIoCounters(handle, out counters))
                             {
-                                currentReadMap[name] = 0;
-                                currentWriteMap[name] = 0;
+                                if (!currentReadMap.ContainsKey(name))
+                                {
+                                    currentReadMap[name] = 0;
+                                    currentWriteMap[name] = 0;
+                                }
+                                currentReadMap[name] += (long)counters.ReadTransferCount;
+                                currentWriteMap[name] += (long)counters.WriteTransferCount;
                             }
-                            currentReadMap[name] += (long)counters.ReadTransferCount;
-                            currentWriteMap[name] += (long)counters.WriteTransferCount;
                         }
                     }
                     catch {}
+                    finally
+                    {
+                        if (handle != IntPtr.Zero)
+                        {
+                            CloseHandle(handle);
+                        }
+                        p.Dispose();
+                    }
                 }
 
                 List<AppUsageItem> usageItems = new List<AppUsageItem>();
