@@ -1227,12 +1227,11 @@ namespace PhoneVPNDashboard
             UpdateProcessStatus();
         }
 
+        private HashSet<string> seenConnections = new HashSet<string>();
+
         private void ConnectionsTimer_Tick(object sender, EventArgs e)
         {
-            if (pageLiveFeed.Visibility == Visibility.Visible)
-            {
-                UpdateLiveConnections();
-            }
+            UpdateLiveConnections();
         }
 
         private void UpdateLiveConnections()
@@ -1242,7 +1241,7 @@ namespace PhoneVPNDashboard
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = "-NoProfile -Command \"Get-NetTCPConnection -State Established,SynSent | Select-Object -First 35 | ForEach-Object { $p = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).Name; if (-not $p) { $p = 'System' }; \"\"$p|$($_.OwningProcess)|$($_.LocalAddress):$($_.LocalPort)|$($_.RemoteAddress):$($_.RemotePort)|$($_.State)\"\" }\"",
+                    Arguments = "-NoProfile -Command \"Get-NetTCPConnection -State Established,SynSent | Select-Object -First 40 | ForEach-Object { $p = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).Name; if (-not $p) { $p = 'System' }; \"\"$p|$($_.OwningProcess)|$($_.LocalAddress):$($_.LocalPort)|$($_.RemoteAddress):$($_.RemotePort)|$($_.State)\"\" }\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     CreateNoWindow = true
@@ -1254,6 +1253,8 @@ namespace PhoneVPNDashboard
 
                 List<AppConnectionItem> items = new List<AppConnectionItem>();
                 string[] lines = output.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                string nowTime = DateTime.Now.ToString("HH:mm:ss");
 
                 foreach (string line in lines)
                 {
@@ -1267,9 +1268,12 @@ namespace PhoneVPNDashboard
                         string state = parts[4];
 
                         string route = "DIRECT / LOCAL";
+                        bool isProxied = false;
+
                         if (local.StartsWith("172.19.") || local.StartsWith("127.0.0.1:17890") || local.StartsWith("127.0.0.1:17880"))
                         {
                             route = "PROXIED (TUNNEL -> VLESS)";
+                            isProxied = true;
                         }
                         else if (remote.Contains(":1082") || remote.Contains(":2080"))
                         {
@@ -1285,10 +1289,27 @@ namespace PhoneVPNDashboard
                             RouteType = route,
                             Status = state
                         });
+
+                        if (isProxied)
+                        {
+                            string connKey = string.Format("{0}->{1}", procName, remote);
+                            if (!seenConnections.Contains(connKey))
+                            {
+                                seenConnections.Add(connKey);
+                                if (seenConnections.Count > 120) seenConnections.Clear();
+
+                                string logLine = string.Format("[{0}] [TRAFFIC] {1} ({2}) -> {3} [TUNNEL PROXIED -> VLESS]\n", nowTime, procName, pid, remote);
+                                txtLogTerminal.AppendText(logLine);
+                                if (chkAutoScroll.IsChecked == true)
+                                {
+                                    txtLogTerminal.ScrollToEnd();
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (items.Count > 0)
+                if (items.Count > 0 && listConnections != null)
                 {
                     listConnections.ItemsSource = items;
                 }
