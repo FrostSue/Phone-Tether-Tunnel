@@ -155,6 +155,10 @@ namespace PhoneVPNDashboard
             string legacy = Path.Combine(installed, "app");
             if (IsInstallFolder(legacy)) return legacy;
 
+            string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string localCandidate = Path.Combine(localApp, p == PlatformProfile.Android ? "PhoneVPN-Android" : "PhoneVPN");
+            if (IsInstallFolder(localCandidate)) return localCandidate;
+
             string cur = AppDomain.CurrentDomain.BaseDirectory;
             while (!string.IsNullOrEmpty(cur))
             {
