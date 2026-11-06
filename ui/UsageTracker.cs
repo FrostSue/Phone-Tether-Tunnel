@@ -400,9 +400,16 @@ namespace PhoneVPNDashboard
                 {
                     object[] v = kv.Value as object[];
                     if (v == null || v.Length < 2) continue;
-                    AppUsage a = GetApp(kv.Key);
-                    a.LifetimeDown = Json.ToLong(v[0]);
-                    a.LifetimeUp = Json.ToLong(v[1]);
+                    string name = kv.Key;
+                    if (string.Equals(name, "steamwebhelper", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(name, "steamservice", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(name, "steam", StringComparison.OrdinalIgnoreCase))
+                    {
+                        name = "Steam";
+                    }
+                    AppUsage a = GetApp(name);
+                    a.LifetimeDown += Json.ToLong(v[0]);
+                    a.LifetimeUp += Json.ToLong(v[1]);
                 }
             }
             if (!File.Exists(StatsPath) && (LifetimeDown > 0 || LifetimeUp > 0))
