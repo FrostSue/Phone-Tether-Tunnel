@@ -262,10 +262,17 @@ namespace PhoneVPNDashboard
                 idleTicks = 0;
                 if (down > 0 || up > 0)
                 {
-                    // Rough: split by open tunnel connections per app.
-                    Dictionary<string, double> w = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-                    foreach (KeyValuePair<string, int> kv in s.AppSockets) w[kv.Key] = kv.Value;
-                    Spread(appDelta, down, up, w);
+                    if (s.AppSockets.Count == 1)
+                    {
+                        foreach (string singleApp in s.AppSockets.Keys)
+                        {
+                            Add(appDelta, singleApp, down, up);
+                        }
+                    }
+                    else
+                    {
+                        Add(appDelta, OtherApp, down, up);
+                    }
                 }
             }
 
