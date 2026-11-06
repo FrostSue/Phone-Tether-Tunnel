@@ -58,8 +58,21 @@ namespace PhoneVPNDashboard
     {
         private static readonly HashSet<string> IgnoredApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "System", "Idle", "android-singbox", "android-xray", "phonevpn-singbox", "phonevpn-xray"
+            "System", "Idle", "android-singbox", "android-xray", "phonevpn-singbox", "phonevpn-xray",
+            "language_server", "language_server_windows_x64"
         };
+
+        private static string NormalizeAppName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "Unknown";
+            if (string.Equals(name, "steamwebhelper", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "steamservice", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "steam", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Steam";
+            }
+            return name;
+        }
 
         private readonly object gate = new object();
         private PlatformProfile profile;
@@ -232,8 +245,11 @@ namespace PhoneVPNDashboard
             {
                 Dictionary<string, object> md = Json.Obj(c, "metadata");
                 string path = Json.Str(md, "processPath");
-                string app = string.IsNullOrEmpty(path) ? "Unknown" : Path.GetFileNameWithoutExtension(path);
-                if (IgnoredApps.Contains(app)) continue;
+                string proc = Json.Str(md, "process");
+                string raw = !string.IsNullOrEmpty(path) ? Path.GetFileNameWithoutExtension(path) :
+                    (!string.IsNullOrEmpty(proc) ? Path.GetFileNameWithoutExtension(proc) : "Unknown");
+                string app = NormalizeAppName(raw);
+                if (IgnoredApps.Contains(app) || IgnoredApps.Contains(raw)) continue;
 
                 string host = Json.Str(md, "host");
                 string ip = Json.Str(md, "destinationIP");
@@ -281,8 +297,9 @@ namespace PhoneVPNDashboard
                 if (IPAddress.IsLoopback(r.RemoteAddress) || IPAddress.IsLoopback(r.LocalAddress)) continue;
                 if (r.RemoteAddress.Equals(IPAddress.Any) || r.RemotePort == 0) continue;
 
-                string app = NameOf(r.Pid);
-                if (IgnoredApps.Contains(app)) continue;
+                string raw = NameOf(r.Pid);
+                string app = NormalizeAppName(raw);
+                if (IgnoredApps.Contains(app) || IgnoredApps.Contains(raw)) continue;
 
                 string local = r.LocalAddress.ToString();
                 string remote = r.RemoteAddress.ToString();
