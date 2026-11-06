@@ -74,7 +74,21 @@ if (Test-Path (Join-Path $Dest 'watcher.pid')) {
     Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$oldStop`"" -Verb RunAs -Wait
 }
 New-Item -ItemType Directory -Force (Join-Path $Dest 'xray') | Out-Null
-Get-ChildItem $src | Where-Object { $_.Name -ne 'xray' } | Copy-Item -Destination $Dest -Recurse -Force
+$keep = @('dashboard-stats.json', 'stats.json', 'stats-android.json') | Where-Object { Test-Path (Join-Path $Dest $_) }
+Get-ChildItem $src | Where-Object { $_.Name -ne 'xray' -and $keep -notcontains $_.Name } | Copy-Item -Destination $Dest -Recurse -Force
+$dataDir = Join-Path $env:LOCALAPPDATA 'PhoneTetherTunnel'
+New-Item -ItemType Directory -Force $dataDir | Out-Null
+$permStats = Join-Path $dataDir 'stats-android.json'
+if (-not (Test-Path $permStats)) {
+    $existing = @((Join-Path $Dest 'dashboard-stats.json'), (Join-Path $src 'dashboard-stats.json')) |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($existing) {
+        Copy-Item $existing $permStats -Force
+        Write-Host "Mevcut kullanim istatistikleri korundu: $permStats"
+    } else {
+        Set-Content -Path $permStats -Value '{"version":2,"platform":"android","total":[0,0],"daily":{},"apps":{}}' -Encoding UTF8
+    }
+}
 Write-Host "Dosyalar kopyalandi: $Dest"
 Install-Cores $Dest
 Get-ChildItem $Dest -Recurse -File | Unblock-File
