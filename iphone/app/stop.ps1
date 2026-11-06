@@ -1,4 +1,3 @@
-# Stops PhoneVPN (watcher, Xray, sing-box). Only touches PhoneVPN's own processes.
 $ErrorActionPreference = 'SilentlyContinue'
 $app = $PSScriptRoot
 $pidFile = Join-Path $app 'watcher.pid'
@@ -12,3 +11,14 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 $bin = Join-Path $app 'bin'
 Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force
+
+Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Where-Object { $_.InterfaceAlias -match 'tun|sing' -or $_.NextHop -match '^172\.19\.' } | Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
+Get-NetAdapter | Where-Object { $_.Name -match '^(phonevpn-tun|android-tun)$' -or $_.InterfaceDescription -match 'sing-tun' } | Disable-NetAdapter -Confirm:$false -ErrorAction SilentlyContinue
+
+$ie = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+$s = Get-ItemProperty $ie -ErrorAction SilentlyContinue
+if ($s -and $s.ProxyEnable -eq 1 -and $s.ProxyServer -match '127\.0\.0\.1|localhost') {
+    Set-ItemProperty $ie -Name ProxyEnable -Value 0 -ErrorAction SilentlyContinue
+    Set-ItemProperty $ie -Name ProxyServer -Value '' -ErrorAction SilentlyContinue
+}
+Clear-DnsClientCache -ErrorAction SilentlyContinue
