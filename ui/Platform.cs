@@ -189,6 +189,29 @@ namespace PhoneVPNDashboard
             return null;
         }
 
+        public static void CleanupGhostRoutes()
+        {
+            try
+            {
+                if (DetectRunning() == null)
+                {
+                    ProcessStartInfo psi = new ProcessStartInfo
+                    {
+                        FileName = "powershell.exe",
+                        Arguments = "-NoProfile -NonInteractive -Command \"Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Where-Object { $_.InterfaceAlias -match 'tun|sing' -or $_.NextHop -match '^172\\.19\\.' } | Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue; Get-NetAdapter | Where-Object { $_.Name -match '^(phonevpn-tun|android-tun)$' -or $_.InterfaceDescription -match 'sing-tun' } | Disable-NetAdapter -Confirm:$false -ErrorAction SilentlyContinue; Clear-DnsClientCache -ErrorAction SilentlyContinue\"",
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+                    using (Process p = Process.Start(psi))
+                    {
+                        if (p != null) p.WaitForExit(3000);
+                    }
+                }
+            }
+            catch {}
+        }
+
         public static bool AnyProcess(string name)
         {
             Process[] procs = null;
