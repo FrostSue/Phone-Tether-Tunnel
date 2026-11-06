@@ -91,6 +91,7 @@ namespace PhoneVPNDashboard
             F<ItemsControl>("ConnList").ItemsSource = conns;
             F<Canvas>("SpeedCanvas").SizeChanged += (s, e) => DrawChart();
 
+            PlatformLocator.CleanupGhostRoutes();
             PlatformProfile start = PlatformLocator.DetectRunning() ?? PlatformProfile.ByKey(prefs.Platform) ?? PlatformProfile.Android;
             SwitchPlatform(start);
 
