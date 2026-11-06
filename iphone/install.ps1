@@ -75,8 +75,21 @@ if (Test-Path (Join-Path $Dest 'watcher.pid')) {
 }
 New-Item -ItemType Directory -Force $Dest | Out-Null
 # Keep the user's own settings.json on reinstall; vless.txt is never shipped.
-$keep = @('settings.json') | Where-Object { Test-Path (Join-Path $Dest $_) }
+$keep = @('settings.json', 'dashboard-stats.json', 'stats.json', 'stats-iphone.json') | Where-Object { Test-Path (Join-Path $Dest $_) }
 Get-ChildItem $src | Where-Object { $keep -notcontains $_.Name } | Copy-Item -Destination $Dest -Recurse -Force
+$dataDir = Join-Path $env:LOCALAPPDATA 'PhoneTetherTunnel'
+New-Item -ItemType Directory -Force $dataDir | Out-Null
+$permStats = Join-Path $dataDir 'stats-iphone.json'
+if (-not (Test-Path $permStats)) {
+    $existing = @((Join-Path $Dest 'dashboard-stats.json'), (Join-Path $src 'dashboard-stats.json'), (Join-Path $PSScriptRoot '..\stats.json')) |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($existing) {
+        Copy-Item $existing $permStats -Force
+        Write-Host "Mevcut kullanim istatistikleri korundu: $permStats"
+    } else {
+        Set-Content -Path $permStats -Value '{"version":2,"platform":"iphone","total":[0,0],"daily":{},"apps":{}}' -Encoding UTF8
+    }
+}
 $vf = Join-Path $Dest 'vless.txt'
 if (-not (Test-Path $vf)) { Copy-Item (Join-Path $src 'vless.txt.example') $vf }
 Write-Host "Dosyalar kopyalandi: $Dest"
