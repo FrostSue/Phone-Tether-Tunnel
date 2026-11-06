@@ -59,13 +59,15 @@ namespace PhoneVPNDashboard
             public long Down, Up, LastDelta;
             public string App;
         }
+        private readonly string installDir;
         private int ticksSinceSave;
         private bool dirty;
 
         public UsageTracker(PlatformProfile profile, string installFolder)
         {
             Profile = profile;
-            StatsPath = ChooseStatsPath(profile, installFolder);
+            installDir = installFolder;
+            StatsPath = ChooseStatsPath(profile);
             for (int i = 0; i < HistoryLength; i++)
             {
                 HistoryDown.Add(0);
@@ -74,20 +76,9 @@ namespace PhoneVPNDashboard
             Load();
         }
 
-        /// <summary>Stats live in the install folder of the running copy; %LOCALAPPDATA% when it is not writable.</summary>
-        private static string ChooseStatsPath(PlatformProfile p, string folder)
+        /// <summary>Permanent platform statistics file under %LOCALAPPDATA%\PhoneTetherTunnel\stats-{platform}.json.</summary>
+        private static string ChooseStatsPath(PlatformProfile p)
         {
-            try
-            {
-                if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
-                {
-                    string probe = Path.Combine(folder, ".dashboard-write-test");
-                    File.WriteAllText(probe, "ok");
-                    File.Delete(probe);
-                    return Path.Combine(folder, "dashboard-stats.json");
-                }
-            }
-            catch { }
             Directory.CreateDirectory(Prefs.DataDir);
             return Path.Combine(Prefs.DataDir, "stats-" + p.Key + ".json");
         }
@@ -379,6 +370,10 @@ namespace PhoneVPNDashboard
         private void Load()
         {
             Dictionary<string, object> d = Json.ReadFile(StatsPath);
+            if (d == null || Json.Arr(d, "total") == null)
+            {
+                d = TryMigrateLegacy(Profile, installDir);
+            }
             if (d == null) return;
             object[] total = Json.Arr(d, "total");
             if (total != null && total.Length >= 2)
@@ -410,6 +405,87 @@ namespace PhoneVPNDashboard
                     a.LifetimeUp = Json.ToLong(v[1]);
                 }
             }
+            if (!File.Exists(StatsPath) && (LifetimeDown > 0 || LifetimeUp > 0))
+            {
+                dirty = true;
+                Save();
+            }
+        }
+
+        private static Dictionary<string, object> TryMigrateLegacy(PlatformProfile p, string folder)
+        {
+            List<string> candidates = new List<string>();
+            if (!string.IsNullOrEmpty(folder))
+            {
+                candidates.Add(Path.Combine(folder, "dashboard-stats.json"));
+            }
+            string cur = AppDomain.CurrentDomain.BaseDirectory;
+            if (!string.IsNullOrEmpty(cur) && !string.IsNullOrEmpty(p.RepoSubdir))
+            {
+                candidates.Add(Path.Combine(cur, p.RepoSubdir, "dashboard-stats.json"));
+                candidates.Add(Path.Combine(cur, "stats.json"));
+            }
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrEmpty(home) && !string.IsNullOrEmpty(p.DefaultFolderName))
+            {
+                candidates.Add(Path.Combine(home, p.DefaultFolderName, "dashboard-stats.json"));
+            }
+            string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrEmpty(localApp))
+            {
+                candidates.Add(Path.Combine(localApp, "PhoneVPN", "dashboard-stats.json"));
+            }
+
+            Dictionary<string, object> best = null;
+            long bestTotal = -1;
+
+            foreach (string path in candidates)
+            {
+                if (!File.Exists(path)) continue;
+                Dictionary<string, object> doc = Json.ReadFile(path);
+                if (doc == null) continue;
+
+                object[] tot = Json.Arr(doc, "total");
+                if (tot != null && tot.Length >= 2)
+                {
+                    long down = Json.ToLong(tot[0]);
+                    if (down > bestTotal)
+                    {
+                        bestTotal = down;
+                        best = doc;
+                    }
+                }
+                else
+                {
+                    long rx = Json.Long(doc, "lifetimeRx");
+                    long tx = Json.Long(doc, "lifetimeTx");
+                    if (rx > bestTotal)
+                    {
+                        bestTotal = rx;
+                        Dictionary<string, object> converted = new Dictionary<string, object>();
+                        converted["version"] = 2;
+                        converted["platform"] = p.Key;
+                        converted["since"] = DateTime.Now.ToString("o", CultureInfo.InvariantCulture);
+                        converted["total"] = new long[] { rx, tx };
+                        Dictionary<string, object> appsMap = new Dictionary<string, object>();
+                        Dictionary<string, object> rawApps = Json.Obj(doc, "apps");
+                        if (rawApps != null)
+                        {
+                            foreach (KeyValuePair<string, object> kv in rawApps)
+                            {
+                                Dictionary<string, object> val = kv.Value as Dictionary<string, object>;
+                                if (val != null)
+                                {
+                                    appsMap[kv.Key] = new long[] { Json.Long(val, "rx"), Json.Long(val, "tx") };
+                                }
+                            }
+                        }
+                        converted["apps"] = appsMap;
+                        best = converted;
+                    }
+                }
+            }
+            return best;
         }
 
         public void Save()
@@ -439,7 +515,16 @@ namespace PhoneVPNDashboard
                     if (kv.Value.LifetimeDown + kv.Value.LifetimeUp > 0) apps[kv.Key] = new long[] { kv.Value.LifetimeDown, kv.Value.LifetimeUp };
                 }
                 d["apps"] = apps;
-                Json.WriteFileAtomic(StatsPath, Json.Stringify(d));
+                string json = Json.Stringify(d);
+                Json.WriteFileAtomic(StatsPath, json);
+                if (!string.IsNullOrEmpty(installDir) && Directory.Exists(installDir))
+                {
+                    try
+                    {
+                        Json.WriteFileAtomic(Path.Combine(installDir, "dashboard-stats.json"), json);
+                    }
+                    catch { }
+                }
                 dirty = false;
             }
             catch (Exception ex)
