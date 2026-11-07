@@ -82,12 +82,53 @@ function Get-Gateways {
     $list | Sort-Object Metric
 }
 
+# The iPhone hotspot sometimes leaves Windows associated to the Wi-Fi (or USB)
+# with only a self-assigned 169.254.x.x IPv4 address (e.g. after Shadowrocket or
+# the hotspot is toggled). There is no IPv4 gateway then, so the phone can never
+# be found and the TUN blocks all traffic. Physical, connected, DHCP adapters
+# without a usable IPv4 address get a DHCP renew. Returns "alias: result" strings.
+function Repair-Dhcp {
+    $out = @()
+    foreach ($a in @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' -and $_.Name -notmatch 'tun|wintun|sing|clash|v2ray' })) {
+        $ipif = Get-NetIPInterface -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+        if (-not $ipif -or $ipif.Dhcp -ne 'Enabled') { continue }
+        $good = @(Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^169\.254\.' })
+        if ($good) { continue }
+        $null = & ipconfig.exe /renew "$($a.Name)" 2>&1
+        $new = (Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^169\.254\.' } | Select-Object -First 1).IPAddress
+        $out += "$($a.Name): $(if ($new) { "yeni adres $new" } else { 'DHCP adres vermedi' })"
+    }
+    return $out
+}
+
 # Returns @{Ip; Port; Alias} of the phone's proxy, trying the last known port first.
-function Find-Phone([int]$preferPort = 0) {
+# Addresses where the phone's proxy share may listen, best first: default
+# gateways, then manual "hosts" from settings.json, then unicast IPv4 neighbours
+# (ARP table) on physical adapters - this also covers a link-local 169.254.x.x
+# address when Wi-Fi/USB has no DHCP lease.
+function Get-PhoneCandidates([string]$preferIp = '') {
+    $phys = @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' -and $_.Name -notmatch 'tun|wintun|sing|clash|v2ray' })
+    $list = @()
+    if ($preferIp) { $list += [pscustomobject]@{ Ip = $preferIp; Alias = 'son adres' } }
+    $list += @(Get-Gateways | Select-Object Ip, Alias)
+    foreach ($h in @($Settings.hosts)) { if ($h) { $list += [pscustomobject]@{ Ip = [string]$h; Alias = 'settings.json' } } }
+    foreach ($a in $phys) {
+        $own = @((Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).IPAddress)
+        $list += @(Get-NetNeighbor -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.State -in 'Reachable', 'Stale', 'Delay', 'Probe' -and $_.LinkLayerAddress -notmatch '^(FF-FF|01-00-5E|00-00-00-00-00-00)' -and
+                           $_.IPAddress -notmatch '\.255$' -and $own -notcontains $_.IPAddress } |
+            ForEach-Object { [pscustomobject]@{ Ip = $_.IPAddress; Alias = $a.Name } })
+    }
+    $seen = @{}
+    foreach ($c in $list) { if (-not $seen.ContainsKey($c.Ip)) { $seen[$c.Ip] = 1; $c } }
+}
+
+# Returns @{Ip; Port; Alias} of the phone's proxy, trying the last known address/port first.
+function Find-Phone([int]$preferPort = 0, [string]$preferIp = '') {
     $order = @()
     if ($preferPort) { $order += $preferPort }
     $order += ($Ports | Where-Object { $_ -ne $preferPort })
-    foreach ($g in Get-Gateways) {
+    foreach ($g in Get-PhoneCandidates $preferIp) {
         foreach ($p in $order) {
             if (Test-Socks $g.Ip $p) { return [pscustomobject]@{ Ip = $g.Ip; Port = $p; Alias = $g.Alias } }
         }
