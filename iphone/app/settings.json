@@ -2,6 +2,8 @@
   "ports": [1082, 1080, 1081, 1083, 1086, 1088, 7890, 7891, 8888, 6153, 2080, 10808, 8080],
   "username": "",
   "password": "",
+  "hosts": [],
+  "killSwitch": false,
   "vlessMode": "udp",
   "intervalSec": 5
 }
