@@ -159,7 +159,7 @@ Turkish step-by-step guides: [`android/OKU-BENI.txt`](android/OKU-BENI.txt),
 
 | File | Purpose |
 |---|---|
-| `iphone/app/settings.json` | Proxy Share ports to probe, optional SOCKS user/password, `vlessMode` (`udp` = only UDP via VLESS, `all` = everything) |
+| `iphone/app/settings.json` | Proxy Share ports to probe, optional SOCKS user/password, `vlessMode` (`udp` = only UDP via VLESS, `all` = everything), `hosts` (extra phone addresses to probe besides the gateway and ARP neighbours), `killSwitch` (`false` = TUN only while the share is reachable, PC falls back to the hotspot directly after 30 s; `true` = TUN always up, no internet without the share) |
 | `iphone/app/vless.txt.example` | Template; the installer copies it to `vless.txt` (git-ignored, never committed) |
 | `android/app/config.json`, `iphone/app/singbox.json` | sing-box TUN / routing; local Clash API for the dashboard's per-app usage |
 | `*/app/watcher.ps1` | Phone discovery, Xray config generation, health checks, leak cleanup |
