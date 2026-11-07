@@ -9,6 +9,10 @@ function Info($m) { Write-Host "  $m" }
 Write-Host ''
 Write-Host '=== 1) Ag baglantilari ===' -ForegroundColor Cyan
 $gws = @(Get-Gateways)
+if (-not $gws) {
+    foreach ($l in @(Repair-Dhcp)) { Info "IPv4 adresi yoktu (169.254.x), DHCP yenilendi -> $l" }
+    $gws = @(Get-Gateways)
+}
 if (-not $gws) { Bad 'Hicbir ag gecidi yok. Bilgisayar telefonun Hotspot/USB agina bagli mi?' }
 foreach ($g in $gws) { Info "$($g.Alias): ag gecidi $($g.Ip)" }
 
