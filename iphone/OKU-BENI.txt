@@ -62,5 +62,9 @@ Ne işe yarar?
   - "UDP gecmiyor": vless.txt doğru mu? watcher.log'da "VLESS linki kullanilamadi" satırına bakın.
   - TLS'siz (security=none) ve IP adresli linkleri Xray 26 kabul etmiyor.
   - settings.json -> "vlessMode": "udp" (varsayılan) veya "all" (tüm trafik VLESS'ten).
+  - settings.json -> "killSwitch": false (varsayılan): telefonun paylaşımı 30 sn bulunamazsa tünel
+    kapanır, internet hotspot'tan doğrudan çalışır; paylaşım gelince tünel kendiliğinden açılır.
+    "killSwitch": true: paylaşım yokken hiç internet yok (trafik asla doğrudan çıkmaz).
+  - Wi-Fi 169.254.x adresinde kalırsa (iPhone DHCP vermedi) watcher ve Durdur DHCP'yi yeniler.
   - Kayıtlar: %USERPROFILE%\PhoneVPN-iPhone\watcher.log, singbox.log, xray-error.log
   - vless.txt sunucunuzun şifresi gibidir, kimseyle paylaşmayın (git'e de eklenmez).
