@@ -82,23 +82,133 @@ function Get-Gateways {
     $list | Sort-Object Metric
 }
 
-# The iPhone hotspot sometimes leaves Windows associated to the Wi-Fi (or USB)
-# with only a self-assigned 169.254.x.x IPv4 address (e.g. after Shadowrocket or
-# the hotspot is toggled). There is no IPv4 gateway then, so the phone can never
-# be found and the TUN blocks all traffic. Physical, connected, DHCP adapters
-# without a usable IPv4 address get a DHCP renew. Returns "alias: result" strings.
-function Repair-Dhcp {
-    $out = @()
-    foreach ($a in @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' -and $_.Name -notmatch 'tun|wintun|sing|clash|v2ray' })) {
-        $ipif = Get-NetIPInterface -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
-        if (-not $ipif -or $ipif.Dhcp -ne 'Enabled') { continue }
-        $good = @(Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^169\.254\.' })
-        if ($good) { continue }
-        $null = & ipconfig.exe /renew "$($a.Name)" 2>&1
-        $new = (Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notmatch '^169\.254\.' } | Select-Object -First 1).IPAddress
-        $out += "$($a.Name): $(if ($new) { "yeni adres $new" } else { 'DHCP adres vermedi' })"
+# --- Hotspot IPv4 recovery ---------------------------------------------------
+# The iPhone hotspot often leaves Windows associated to the Wi-Fi (or USB) with
+# only a self-assigned 169.254.x.x address: its DHCP server stops answering after
+# the phone, the hotspot or Shadowrocket restarts. There is no IPv4 gateway then,
+# so the phone can never be found and the PC has no internet at all.
+# 1) a DHCP renew (with a timeout: "ipconfig /renew" blocks for minutes when no
+#    DHCP server answers, which froze Baslat/Durdur/Test and the watcher);
+# 2) if DHCP still gives nothing, a static address in the iPhone hotspot subnet
+#    (always 172.20.10.0/28, gateway 172.20.10.1), kept only if the phone answers
+#    on it. It is undone as soon as the adapter leaves that network (watcher,
+#    Durdur and the netfix scheduled task all check this).
+$FallbackFile = Join-Path $AppDir 'static-fallback.json'
+$HotspotGw    = '172.20.10.1'
+
+function Get-PhysicalAdapters {
+    @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' -and $_.Name -notmatch 'tun|wintun|sing|clash|v2ray' })
+}
+
+# netfix (SYSTEM), Baslat/Durdur (admin) and the watcher may all repair at the
+# same moment; one machine-wide mutex keeps them from undoing each other.
+function Invoke-NetLocked([scriptblock]$body) {
+    $sec = New-Object Security.AccessControl.MutexSecurity
+    $sec.AddAccessRule((New-Object Security.AccessControl.MutexAccessRule((New-Object Security.Principal.SecurityIdentifier('S-1-1-0')), 'FullControl', 'Allow')))
+    $created = $false
+    $m = New-Object Threading.Mutex($false, 'Global\PhoneVPN-iPhone-NetFix', [ref]$created, $sec)
+    $own = $false
+    try { $own = $m.WaitOne(90000) } catch [Threading.AbandonedMutexException] { $own = $true }
+    try { & $body } finally { if ($own) { $m.ReleaseMutex() }; $m.Dispose() }
+}
+
+function Invoke-DhcpRenew([string]$alias, [int]$timeoutSec = 10) {
+    $p = Start-Process ipconfig.exe -ArgumentList "/renew `"$alias`"" -WindowStyle Hidden -PassThru
+    if (-not $p.WaitForExit($timeoutSec * 1000)) { $p | Stop-Process -Force }
+}
+
+function Get-UsableIPv4([int]$ifIndex) {
+    (Get-NetIPAddress -InterfaceIndex $ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -notmatch '^169\.254\.' -and $_.AddressState -eq 'Preferred' } | Select-Object -First 1).IPAddress
+}
+
+function Reset-AdapterToDhcp([int]$ifIndex) {
+    Get-NetRoute -InterfaceIndex $ifIndex -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
+    Get-NetIPAddress -InterfaceIndex $ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object PrefixOrigin -eq 'Manual' |
+        Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
+    Set-NetIPInterface -InterfaceIndex $ifIndex -AddressFamily IPv4 -Dhcp Enabled -ErrorAction SilentlyContinue
+    Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue
+}
+
+# Static address in the iPhone hotspot subnet; kept only if the phone answers. Needs admin.
+function Set-HotspotFallback($adapter) {
+    $i = $adapter.ifIndex
+    foreach ($last in 14, 13, 12) {
+        $ip = "172.20.10.$last"
+        Set-NetIPInterface -InterfaceIndex $i -AddressFamily IPv4 -Dhcp Disabled -ErrorAction SilentlyContinue
+        Get-NetIPAddress -InterfaceIndex $i -AddressFamily IPv4 -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
+        $null = New-NetIPAddress -InterfaceIndex $i -IPAddress $ip -PrefixLength 28 -DefaultGateway $HotspotGw -ErrorAction SilentlyContinue
+        Set-DnsClientServerAddress -InterfaceIndex $i -ServerAddresses $HotspotGw -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3   # duplicate address detection
+        $st = (Get-NetIPAddress -InterfaceIndex $i -IPAddress $ip -ErrorAction SilentlyContinue).AddressState
+        if ($st -eq 'Preferred' -and (Test-Connection $HotspotGw -Count 2 -Quiet -ErrorAction SilentlyContinue)) {
+            $state = [ordered]@{ ifIndex = $i; alias = $adapter.Name; ip = $ip; since = (Get-Date).ToString('s') }
+            [IO.File]::WriteAllText($FallbackFile, ($state | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+            return $ip
+        }
+        if ($st -ne 'Duplicate') { break }   # phone does not answer at all: not an iPhone hotspot
     }
-    return $out
+    Reset-AdapterToDhcp $i
+    return $null
+}
+
+# The fallback in effect: from static-fallback.json, or a DHCP-disabled adapter
+# that carries one of our manual 172.20.10.12-14 addresses without that file
+# (e.g. after a crash), so it can never be left behind untracked.
+function Get-HotspotFallback {
+    if (Test-Path $FallbackFile) { return (Get-Content $FallbackFile -Raw | ConvertFrom-Json) }
+    foreach ($a in @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'tun|wintun|sing|clash|v2ray' })) {
+        $ipif = Get-NetIPInterface -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+        if (-not $ipif -or $ipif.Dhcp -ne 'Disabled') { continue }
+        $m = Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -PrefixOrigin Manual -ErrorAction SilentlyContinue |
+            Where-Object { $_.IPAddress -match '^172\.20\.10\.1[234]$' -and $_.PrefixLength -eq 28 } | Select-Object -First 1
+        if ($m) { return [pscustomobject]@{ ifIndex = $a.ifIndex; alias = $a.Name; ip = $m.IPAddress } }
+    }
+    return $null
+}
+
+# Undoes the static fallback. With -IfStale only when it no longer works: the
+# adapter is down, or the iPhone (172.20.10.1) no longer answers on it, i.e. the
+# PC is on another network now. Returns a message or $null.
+function Restore-HotspotFallback([switch]$IfStale) {
+    Invoke-NetLocked {
+        $s = Get-HotspotFallback
+        if (-not $s) { return $null }
+        if ($IfStale) {
+            $a = Get-NetAdapter -InterfaceIndex $s.ifIndex -ErrorAction SilentlyContinue
+            if ($a -and $a.Status -eq 'Up' -and (Test-Connection $HotspotGw -Count 3 -Quiet -ErrorAction SilentlyContinue)) {
+                if (-not (Test-Path $FallbackFile)) {   # adopt an untracked one
+                    $state = [ordered]@{ ifIndex = [int]$s.ifIndex; alias = $s.alias; ip = $s.ip; since = (Get-Date).ToString('s') }
+                    [IO.File]::WriteAllText($FallbackFile, ($state | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+                }
+                return $null
+            }
+        }
+        Reset-AdapterToDhcp ([int]$s.ifIndex)
+        Remove-Item $FallbackFile -Force -ErrorAction SilentlyContinue
+        Invoke-DhcpRenew $s.alias 8
+        return "$($s.alias): statik yedek adres $($s.ip) kaldirildi, DHCP'ye donuldu"
+    }
+}
+
+# Physical, connected, DHCP adapters without a usable IPv4 address get a DHCP
+# renew, then (unless -NoFallback) the static hotspot fallback. Returns "alias: result" strings.
+function Repair-Dhcp([switch]$NoFallback) {
+    Invoke-NetLocked {
+        $out = @()
+        foreach ($a in Get-PhysicalAdapters) {
+            $ipif = Get-NetIPInterface -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+            if (-not $ipif -or $ipif.Dhcp -ne 'Enabled') { continue }
+            if (Get-UsableIPv4 $a.ifIndex) { continue }
+            Invoke-DhcpRenew $a.Name 10
+            $new = Get-UsableIPv4 $a.ifIndex
+            if ($new) { $out += "$($a.Name): DHCP yenilendi, yeni adres $new"; continue }
+            $fb = $null
+            if (-not $NoFallback) { $fb = Set-HotspotFallback $a }
+            $out += "$($a.Name): DHCP adres vermedi$(if ($fb) { " - iPhone hotspot'u icin statik yedek adres $fb kullaniliyor" })"
+        }
+        $out
+    }
 }
 
 # Returns @{Ip; Port; Alias} of the phone's proxy, trying the last known port first.
