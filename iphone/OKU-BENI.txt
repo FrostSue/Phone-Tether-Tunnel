@@ -65,6 +65,11 @@ Ne işe yarar?
   - settings.json -> "killSwitch": false (varsayılan): telefonun paylaşımı 30 sn bulunamazsa tünel
     kapanır, internet hotspot'tan doğrudan çalışır; paylaşım gelince tünel kendiliğinden açılır.
     "killSwitch": true: paylaşım yokken hiç internet yok (trafik asla doğrudan çıkmaz).
-  - Wi-Fi 169.254.x adresinde kalırsa (iPhone DHCP vermedi) watcher ve Durdur DHCP'yi yeniler.
+  - Wi-Fi 169.254.x adresinde kalırsa (iPhone DHCP vermedi) watcher ve Durdur DHCP'yi yeniler;
+    yine adres gelmezse iPhone hotspot ağında statik yedek adres (172.20.10.14) kullanılır.
+    Bilgisayar başka bir ağa geçince yedek adres kendiliğinden kaldırılır, DHCP'ye dönülür.
+  - "PhoneVPN iPhone Netfix" zamanlanmış görevi açılışta ve her ağ bağlantısında aynı onarımı
+    yapar ve PhoneVPN kalıntılarını temizler. Elle kurmak için (yönetici PowerShell):
+      powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\PhoneVPN\netfix.ps1" -Register
   - Kayıtlar: %USERPROFILE%\PhoneVPN-iPhone\watcher.log, singbox.log, xray-error.log
   - vless.txt sunucunuzun şifresi gibidir, kimseyle paylaşmayın (git'e de eklenmez).
