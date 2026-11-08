@@ -44,11 +44,13 @@ $lastRenew = [datetime]::MinValue; $lastSeen = $null
 if ($killSwitch) { Ensure-SingBox }   # bring the TUN up first so nothing goes out directly while we search
 
 while ($true) {
+    $r = Restore-HotspotFallback -IfStale
+    if ($r) { Log $r }
     $best = Find-Phone $currentPort $currentIp
     if (-not $best -and ((Get-Date) - $lastRenew).TotalSeconds -ge 20) {
         $lastRenew = Get-Date
         $fix = @(Repair-Dhcp)
-        foreach ($l in $fix) { Log "IPv4 adresi yoktu (169.254.x), DHCP yenilendi -> $l" }
+        foreach ($l in $fix) { Log "IPv4 adresi yoktu (169.254.x) -> $l" }
         if ($fix) { $best = Find-Phone $currentPort $currentIp }
     }
     if ($best) {
