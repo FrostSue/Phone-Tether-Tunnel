@@ -24,7 +24,8 @@ if ($s -and $s.ProxyEnable -eq 1 -and $s.ProxyServer -match '127\.0\.0\.1|localh
 Clear-DnsClientCache -ErrorAction SilentlyContinue
 
 # The iPhone hotspot often leaves Wi-Fi/USB with only a 169.254.x.x address after
-# the phone, its hotspot or Shadowrocket restarts; without a renew the PC stays
-# offline even with PhoneVPN stopped.
+# the phone, its hotspot or Shadowrocket restarts; without a fix the PC stays
+# offline even with PhoneVPN stopped. Both steps have short timeouts.
 . (Join-Path $app 'common.ps1')
-foreach ($l in @(Repair-Dhcp)) { Write-Host "IPv4 adresi yoktu, DHCP yenilendi -> $l" }
+$r = Restore-HotspotFallback -IfStale; if ($r) { Write-Host $r }
+foreach ($l in @(Repair-Dhcp)) { Write-Host "IPv4 adresi yoktu -> $l" }
