@@ -106,6 +106,17 @@ if (-not $NoShortcuts) {
     Write-Host 'Masaustu kisayollari: iPhone VPN Baslat / Durdur / Test'
 }
 
+# Self-heal task: at startup and on every network connect, netfix.ps1 (as SYSTEM)
+# removes PhoneVPN leftovers and fixes the iPhone hotspot's missing DHCP address,
+# so a reboot or crash never leaves the PC offline.
+$netfix = Join-Path $Dest 'netfix.ps1'
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($isAdmin) { & $netfix -Register }
+else { Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$netfix`" -Register" -Verb RunAs -Wait -WindowStyle Hidden }
+if (-not (Get-ScheduledTask -TaskName 'PhoneVPN iPhone Netfix' -ErrorAction SilentlyContinue)) {
+    Write-Host "UYARI: 'PhoneVPN iPhone Netfix' gorevi kurulamadi (yonetici izni verilmedi?)." -ForegroundColor Yellow
+}
+
 if (-not (Get-Content $vf | Where-Object { $_ -match '^\s*vless://' })) {
     Write-Host ''
     Write-Host 'ONEMLI: Discord sesi (UDP) icin sunucu linkinizi su dosyaya yapistirin:' -ForegroundColor Yellow
