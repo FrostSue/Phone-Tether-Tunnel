@@ -10,7 +10,8 @@ Write-Host ''
 Write-Host '=== 1) Ag baglantilari ===' -ForegroundColor Cyan
 $gws = @(Get-Gateways)
 if (-not $gws) {
-    foreach ($l in @(Repair-Dhcp)) { Info "IPv4 adresi yoktu (169.254.x), DHCP yenilendi -> $l" }
+    $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    foreach ($l in @(Repair-Dhcp -NoFallback:(-not $admin))) { Info "IPv4 adresi yoktu (169.254.x) -> $l" }
     $gws = @(Get-Gateways)
 }
 if (-not $gws) { Bad 'Hicbir ag gecidi yok. Bilgisayar telefonun Hotspot/USB agina bagli mi?' }
