@@ -62,7 +62,7 @@ function Test-Socks([string]$ip, [int]$port, [int]$timeoutMs = 700) {
     try {
         $r = $c.BeginConnect($ip, $port, $null, $null)
         if (-not ($r.AsyncWaitHandle.WaitOne($timeoutMs) -and $c.Connected)) { return $false }
-        $s = $c.GetStream(); $s.ReadTimeout = 1500
+        $s = $c.GetStream(); $s.ReadTimeout = [Math]::Max(1500, $timeoutMs)
         if ($User) { $s.Write([byte[]](5, 2, 0, 2), 0, 4) } else { $s.Write([byte[]](5, 1, 0), 0, 3) }
         $b = New-Object byte[] 2
         $n = $s.Read($b, 0, 2)
