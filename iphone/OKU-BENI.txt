@@ -59,6 +59,11 @@ Ne işe yarar?
 5) SORUN GİDERME
 ----------------
   - "Telefonda proxy bulunamadi": Enable Share açık mı? Port settings.json "ports" listesinde mi?
+  - Bağlanılamayınca watcher Windows bildirimiyle nedenini söyler (IPv4 yok / paylaşım kapalı /
+    başka ağdasınız). iPhone DHCP vermiyor ve paylaşım kapalı görünüyorsa neredeyse her zaman
+    Shadowrocket > Ayarlar > Tunnel > "Include All Networks" açıktır: KAPATIN, sonra Shadowrocket
+    VPN'ini ve Kişisel Erişim Noktası'nı kapatıp açın. Proxy Share ekranındaki IP 172.20.10.1
+    olmalı; 169.254.x görünüyorsa paylaşım bilgisayardan erişilemez.
   - "UDP gecmiyor": vless.txt doğru mu? watcher.log'da "VLESS linki kullanilamadi" satırına bakın.
   - TLS'siz (security=none) ve IP adresli linkleri Xray 26 kabul etmiyor.
   - settings.json -> "vlessMode": "udp" (varsayılan) veya "all" (tüm trafik VLESS'ten).
