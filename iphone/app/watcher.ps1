@@ -28,6 +28,33 @@ function Ensure-SingBox {
     }
 }
 
+# Windows balloon notification (separate hidden process, so the watcher never blocks).
+function Notify([string]$title, [string]$text) {
+    $t = $title.Replace("'", "''"); $x = $text.Replace("'", "''")
+    $cmd = "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; `$n = New-Object System.Windows.Forms.NotifyIcon; " +
+           "`$n.Icon = [System.Drawing.SystemIcons]::Information; `$n.Visible = `$true; `$n.ShowBalloonTip(15000, '$t', '$x', 'Info'); Start-Sleep 16; `$n.Dispose()"
+    Start-Process powershell.exe -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-Command', $cmd -WindowStyle Hidden
+}
+
+# Why the phone's share was not found, as a code and a plain instruction.
+function Get-MissReason {
+    $wifi = @(Get-PhysicalAdapters)
+    if (-not $wifi) { return @('nolink', 'Bilgisayar hicbir aga bagli degil. iPhone Wi-Fi''sine (veya USB''ye) baglanin.') }
+    $gws = @(Get-Gateways)
+    if (-not $gws) {
+        return @('noip', 'iPhone bilgisayara IPv4 adresi vermiyor ve sabit adrese de cevap vermiyor. Telefonda: Shadowrocket > Ayarlar > Tunnel > "Include All Networks" KAPALI olmali; sonra Kisisel Erisim Noktasi''ni kapatip acin.')
+    }
+    if (-not ($gws | Where-Object Ip -eq $HotspotGw)) {
+        return @('other', "Bilgisayar iPhone hotspot'una degil baska bir aga bagli (ag gecidi $($gws[0].Ip)). iPhone Wi-Fi'sine baglanin.")
+    }
+    foreach ($g in ($gws | Where-Object Ip -eq $HotspotGw)) {
+        if (Test-Connection $g.Ip -Count 2 -Quiet) {
+            return @('noshare', "Telefona ulasildi ($($g.Ip)) ama Shadowrocket proxy paylasimi kapali. Telefonda: Shadowrocket VPN'i kapatip acin; Ayarlar > Proxy > Proxy Share acik olmali ve IP olarak 172.20.10.1 gostermeli.")
+        }
+    }
+    return @('nophone', "Ag gecidi ($($gws[0].Ip)) cevap vermiyor. Bu bir iPhone hotspot'u degil ya da telefonun hotspot'u takildi: Kisisel Erisim Noktasi'ni kapatip acin.")
+}
+
 function Stop-Tunnel {
     Get-OwnProcess $SbExe | Stop-Process -Force
     Get-OwnProcess $XrayExe | Stop-Process -Force
@@ -38,15 +65,26 @@ function Stop-Tunnel {
 
 Set-Content (Join-Path $AppDir 'watcher.pid') $PID
 Log "watcher basladi (PID $PID, killSwitch: $killSwitch). Denenecek portlar: $($Ports -join ', ')"
-$currentKey = $null; $currentPort = 0; $currentIp = ''; $missing = $false
-$lastRenew = [datetime]::MinValue; $lastSeen = $null
+$currentKey = $null; $currentPort = 0; $currentIp = ''; $missing = $false; $missReason = ''
+$lastRenew = [datetime]::MinValue; $lastSeen = $null; $missCount = 0
 
 if ($killSwitch) { Ensure-SingBox }   # bring the TUN up first so nothing goes out directly while we search
 
 while ($true) {
     $r = Restore-HotspotFallback -IfStale
     if ($r) { Log $r }
-    $best = Find-Phone $currentPort $currentIp
+    # The phone in use answers slowly while every app reconnects through it; a
+    # short probe then fails and used to tear the tunnel down. Probe it patiently
+    # and only treat it as gone after 3 failed cycles in a row.
+    $best = $null
+    if ($currentKey) {
+        for ($k = 0; $k -lt 3 -and -not $best; $k++) {
+            if (Test-Socks $currentIp $currentPort 3000) { $best = [pscustomobject]@{ Ip = $currentIp; Port = $currentPort; Alias = 'son adres' } }
+        }
+    }
+    if (-not $best) { $best = Find-Phone $currentPort $currentIp }
+    if ($best) { $missCount = 0 }
+    elseif ($currentKey -and ++$missCount -lt 3) { Start-Sleep -Seconds $interval; continue }
     if (-not $best -and ((Get-Date) - $lastRenew).TotalSeconds -ge 20) {
         $lastRenew = Get-Date
         $fix = @(Repair-Dhcp)
@@ -78,13 +116,16 @@ while ($true) {
             Log 'xray kapanmis, yeniden baslatiliyor'
             Start-Xray
         }
-        $missing = $false
+        if ($missing) { Notify 'PhoneVPN baglandi' "Telefon bulundu ($($best.Ip):$($best.Port)), tum trafik tunelden gidiyor." }
+        $missing = $false; $missReason = ''
         Ensure-SingBox
     } else {
-        if (-not $missing) {
-            Log "telefona ulasilamiyor (son adres: $currentKey), bekleniyor. Telefonda Shadowrocket bagli ve Proxy Share acik mi?"
-            if (-not $killSwitch) { Log "killSwitch kapali: $graceSec sn icinde bulunamazsa tunel kapatilir, internet dogrudan calisir" }
-            $missing = $true
+        $why = Get-MissReason
+        if (-not $missing -or $why[0] -ne $missReason) {
+            Log "telefonun proxy paylasimi bulunamadi: $($why[1])"
+            if (-not $missing -and -not $killSwitch) { Log "killSwitch kapali: $graceSec sn icinde bulunamazsa tunel kapatilir, internet dogrudan calisir" }
+            Notify 'PhoneVPN: telefona baglanilamadi' $why[1]
+            $missing = $true; $missReason = $why[0]
         }
         if ($killSwitch) { Ensure-SingBox }
         elseif ((Get-OwnProcess $SbExe) -and (-not $lastSeen -or ((Get-Date) - $lastSeen).TotalSeconds -ge $graceSec)) {
