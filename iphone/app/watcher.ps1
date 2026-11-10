@@ -58,6 +58,7 @@ function Get-MissReason {
 function Stop-Tunnel {
     Get-OwnProcess $SbExe | Stop-Process -Force
     Get-OwnProcess $XrayExe | Stop-Process -Force
+    Remove-Item $XrayCfg -Force   # the dashboard reads the phone address from it; never show a stale one
     Start-Sleep -Milliseconds 500
     Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Where-Object { $_.InterfaceAlias -match 'tun|sing' -or $_.NextHop -match '^172\.19\.' } | Remove-NetRoute -Confirm:$false
     Clear-DnsClientCache
@@ -77,7 +78,13 @@ while ($true) {
     # short probe then fails and used to tear the tunnel down. Probe it patiently
     # and only treat it as gone after 3 failed cycles in a row.
     $best = $null
-    if ($currentKey) {
+    # After a network switch the old address is on no connected network any more:
+    # drop it at once instead of probing it patiently (that delayed the switch ~1 min).
+    if ($currentKey -and -not (Get-PhoneCandidates | Where-Object Ip -eq $currentIp)) {
+        Log "son telefon adresi ($currentIp) artik bagli aglarda yok - ag degisti, telefon yeniden araniyor"
+        $currentIp = ''; $missCount = 2
+    }
+    if ($currentKey -and $currentIp) {
         for ($k = 0; $k -lt 3 -and -not $best; $k++) {
             if (Test-Socks $currentIp $currentPort 3000) { $best = [pscustomobject]@{ Ip = $currentIp; Port = $currentPort; Alias = 'son adres' } }
         }
