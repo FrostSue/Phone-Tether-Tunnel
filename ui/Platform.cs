@@ -267,12 +267,15 @@ namespace PhoneVPNDashboard
                 }
             }
 
-            // 2) Fallback: last "telefon bulundu" line of the watcher log.
+            // 2) Fallback: last "telefon bulundu" line of the watcher log, but only while
+            //    it is still current - not after a later loss, tunnel shutdown or restart.
             if (string.IsNullOrEmpty(link.Ip))
             {
                 string tail = ReadTail(Path.Combine(folder, "watcher.log"), 16384);
                 MatchCollection ms = Regex.Matches(tail, @"telefon bulundu: (\d+\.\d+\.\d+\.\d+)(?::(\d+))?");
-                if (ms.Count > 0)
+                MatchCollection lost = Regex.Matches(tail, @"bulunamadi|ulasilamiyor|tunel kapatildi|watcher basladi|artik bagli aglarda yok");
+                int lastLost = lost.Count > 0 ? lost[lost.Count - 1].Index : -1;
+                if (ms.Count > 0 && ms[ms.Count - 1].Index > lastLost)
                 {
                     Match m = ms[ms.Count - 1];
                     link.Ip = m.Groups[1].Value;
