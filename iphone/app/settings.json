@@ -5,5 +5,10 @@
   "hosts": [],
   "killSwitch": false,
   "vlessMode": "udp",
-  "intervalSec": 5
+  "intervalSec": 5,
+  "directDomains": [
+    "sahibinden.com",
+    "shbdn.com",
+    "incehesap.com"
+  ]
 }
