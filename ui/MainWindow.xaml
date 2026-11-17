@@ -890,6 +890,8 @@
               <TextBlock Text="VLESS LINK (LEAVE EMPTY TO KEEP THE CURRENT ONE)" Style="{StaticResource Caption}" Margin="0,0,0,6"/>
               <PasswordBox x:Name="SetVless" Style="{StaticResource SecretInput}" Margin="0,0,0,6"/>
               <TextBlock x:Name="VlessHint" Text="" Style="{StaticResource Sub}" Margin="0,0,0,14"/>
+              <TextBlock Text="DIRECT DOMAINS (BYPASS PROXY, COMMA-SEPARATED)" Style="{StaticResource Caption}" Margin="0,0,0,6"/>
+              <TextBox x:Name="SetDirectDomains" Style="{StaticResource Input}" FontFamily="{StaticResource MonoFont}" FontSize="12" Margin="0,0,0,14"/>
               <Button x:Name="SaveIphoneBtn" Style="{StaticResource PrimaryBtn}" Content="Save iPhone settings" HorizontalAlignment="Left"/>
             </StackPanel>
           </Border>
