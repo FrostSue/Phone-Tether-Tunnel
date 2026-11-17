@@ -1112,7 +1112,44 @@ namespace PhoneVPNDashboard
             F<TextBlock>("VlessHint").Text = File.Exists(Path.Combine(folder, "vless.txt"))
                 ? "A VLESS link is saved in vless.txt (not shown here)."
                 : "No VLESS link saved yet.";
+            object[] direct = Json.Arr(s, "directDomains");
+            F<TextBox>("SetDirectDomains").Text = direct != null ? string.Join(", ", direct.Select(d => Convert.ToString(d, CultureInfo.InvariantCulture))) : "";
             F<Button>("SaveIphoneBtn").IsEnabled = s != null;
+        }
+
+        private void UpdateSingboxDirectDomains(List<string> domains)
+        {
+            string sbPath = Path.Combine(folder, profile.SingboxConfig);
+            Dictionary<string, object> cfg = Json.ReadFile(sbPath);
+            if (cfg == null) return;
+            Dictionary<string, object> route = Json.Obj(cfg, "route");
+            if (route == null) return;
+            object[] rawRules = Json.Arr(route, "rules");
+            List<object> rules = rawRules != null ? new List<object>(rawRules) : new List<object>();
+            int idx = -1;
+            for (int i = 0; i < rules.Count; i++)
+            {
+                Dictionary<string, object> r = rules[i] as Dictionary<string, object>;
+                if (r != null && r.ContainsKey("domain_suffix"))
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            if (domains != null && domains.Count > 0)
+            {
+                Dictionary<string, object> rule = new Dictionary<string, object>();
+                rule["domain_suffix"] = domains.ToArray();
+                rule["outbound"] = "direct";
+                if (idx >= 0) rules[idx] = rule;
+                else rules.Add(rule);
+            }
+            else if (idx >= 0)
+            {
+                rules.RemoveAt(idx);
+            }
+            route["rules"] = rules.ToArray();
+            Json.WriteFileAtomic(sbPath, Json.Stringify(cfg));
         }
 
         private void SaveIphoneSettings()
@@ -1149,13 +1186,22 @@ namespace PhoneVPNDashboard
                 return;
             }
 
+            List<string> directDomains = new List<string>();
+            foreach (string part in F<TextBox>("SetDirectDomains").Text.Split(new[] { ',', ' ', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string d = part.Trim().ToLowerInvariant();
+                if (d.Length > 0 && !directDomains.Contains(d)) directDomains.Add(d);
+            }
+
             s["ports"] = ports;
             s["vlessMode"] = F<RadioButton>("VlessAll").IsChecked == true ? "all" : "udp";
             s["intervalSec"] = interval;
+            s["directDomains"] = directDomains;
             try
             {
                 Json.WriteFileAtomic(path, Json.Stringify(s));
                 if (link.Length > 0) File.WriteAllText(Path.Combine(folder, "vless.txt"), link + "\n", new UTF8Encoding(false));
+                UpdateSingboxDirectDomains(directDomains);
                 AppendDash("iPhone settings saved" + (link.Length > 0 ? " (VLESS link updated)" : ""));
                 LoadIphoneSettings();
                 MessageBox.Show(this, "Saved. Restart the tunnel for the watcher to pick the changes up.", "iPhone settings",
