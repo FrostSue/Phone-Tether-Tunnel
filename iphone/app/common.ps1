@@ -49,11 +49,37 @@ function Reset-LeakedTcp {
         if ($phys -notcontains $c.LocalAddress) { continue }
         if (Test-PrivateIPv4 $c.RemoteAddress) { continue }
         if ($c.RemoteAddress -notmatch '^\d+\.\d+\.\d+\.\d+$') { continue }
-        $rc = [PvTcp]::Close($c.LocalAddress, $c.LocalPort, $c.RemoteAddress, $c.RemotePort)
         $pn = (Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue).Name
+        if ($pn -and ($pn -match '^(phonevpn-|sing-box|xray)')) { continue }
+        $rc = [PvTcp]::Close($c.LocalAddress, $c.LocalPort, $c.RemoteAddress, $c.RemotePort)
         $out += "$pn -> $($c.RemoteAddress):$($c.RemotePort)$(if ($rc -ne 0) { " (kapatilamadi, kod $rc)" })"
     }
     return $out
+}
+
+function Sync-SingboxDirectDomains {
+    if (-not (Test-Path $SbCfg)) { return }
+    try {
+        $raw = Get-Content $SbCfg -Raw | ConvertFrom-Json
+        $domains = @()
+        if ($Settings.directDomains) {
+            $domains = @($Settings.directDomains | ForEach-Object { [string]$_ } | Where-Object { $_ -match '\S' })
+        }
+        $rules = @($raw.route.rules)
+        $idx = -1
+        for ($k = 0; $k -lt $rules.Count; $k++) {
+            if ($rules[$k].domain_suffix) { $idx = $k; break }
+        }
+        if ($domains.Count -gt 0) {
+            $r = [ordered]@{ domain_suffix = $domains; outbound = 'direct' }
+            if ($idx -ge 0) { $rules[$idx] = $r }
+            else { $rules += $r }
+        } elseif ($idx -ge 0) {
+            $rules = @($rules | Where-Object { -not $_.domain_suffix })
+        }
+        $raw.route.rules = $rules
+        [IO.File]::WriteAllText($SbCfg, ($raw | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
+    } catch {}
 }
 
 # Real SOCKS5 handshake (a bare TCP connect can be faked by TUN stacks).
